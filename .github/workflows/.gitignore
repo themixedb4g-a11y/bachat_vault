@@ -1,0 +1,18 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# VS Code settings
+.vscode/
+
+# Local data or logs
+*.log
+.DS_Store
