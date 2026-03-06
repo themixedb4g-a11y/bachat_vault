@@ -2,18 +2,17 @@ import os
 import pandas as pd
 from datetime import datetime, timedelta
 from supabase import create_client
-from concurrent.futures import ThreadPoolExecutor
+import pytz
 
-# --- 1. CONNECTION PATH FOR GITHUB ---
-# This reads from the secure GitHub Secrets you will set up
+# --- 1. CONNECTION ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ Connection Error: SUPABASE_URL or SUPABASE_KEY is missing from environment.")
-else:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    print("🚀 Connection Path established successfully!")
+    print("❌ Connection Error: Keys missing.")
+    exit(1)
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- CONFIGURATION ---
 PERIODS = {
@@ -22,59 +21,74 @@ PERIODS = {
     "return_15y": 5475, "return_20y": 7300
 }
 
-def process_single_ticker(ticker):
-    try:
-        # 1. GET LATEST ANCHOR
-        latest_res = supabase.table("daily_nav").select("validity_date, nav")\
-            .eq("ticker", ticker).gt("nav", 0).order("validity_date", desc=True).limit(1).execute().data
-        
-        if not latest_res:
-            latest_res = supabase.table("benchmarks").select("validity_date, value")\
-                .eq("ticker", ticker).gt("value", 0).order("validity_date", desc=True).limit(1).execute().data
-            if latest_res: latest_res[0]['nav'] = latest_res[0]['value']
-        
-        if not latest_res: return f"⏩ {ticker}: No data"
+def run_optimized_brain():
+    print("🧠 Starting Optimized Brain Engine...")
+    start_time = datetime.now()
 
-        anchor_date = pd.to_datetime(latest_res[0]['validity_date'])
-        latest_nav = latest_res[0]['nav']
+    # 1. BULK FETCH ALL DATA (The "Library" approach)
+    # We fetch enough data for calculations (last 20 years if needed)
+    nav_data = pd.DataFrame(supabase.table("daily_nav").select("ticker, validity_date, nav").execute().data)
+    bench_data = pd.DataFrame(supabase.table("benchmarks").select("ticker, validity_date, value").execute().data)
+    payout_data = pd.DataFrame(supabase.table("payout_history").select("ticker, payout_date, payout_amount, ex_nav").execute().data)
+
+    if nav_data.empty and bench_data.empty:
+        print("❌ No price data found. Aborting.")
+        return
+
+    # Standardize Column Names and Dates
+    if not bench_data.empty:
+        bench_data = bench_data.rename(columns={'value': 'nav'})
+        all_prices = pd.concat([nav_data, bench_data])
+    else:
+        all_prices = nav_data
+
+    all_prices['validity_date'] = pd.to_datetime(all_prices['validity_date'])
+    if not payout_data.empty:
+        payout_data['payout_date'] = pd.to_datetime(payout_data['payout_date'])
+
+    # 2. GET TICKERS
+    all_tickers = all_prices['ticker'].unique()
+    final_stats = []
+
+    # 3. CALCULATE IN MEMORY (Fast!)
+    for ticker in all_tickers:
+        ticker_prices = all_prices[all_prices['ticker'] == ticker].sort_values('validity_date', ascending=False)
+        if ticker_prices.empty: continue
+
+        anchor_row = ticker_prices.iloc[0]
+        anchor_date = anchor_row['validity_date']
+        latest_nav = anchor_row['nav']
 
         stats_update = {
             "ticker": ticker, 
-            "last_updated": datetime.now().isoformat(),
+            "last_updated": datetime.now(pytz.timezone('Asia/Karachi')).isoformat(),
             "last_validity_date": anchor_date.strftime('%Y-%m-%d')
         }
 
-        # 2. PAYOUTS (Increased limit for Daily Dividend Funds)
-        payouts = supabase.table("payout_history").select("payout_date, payout_amount, ex_nav")\
-            .eq("ticker", ticker).order("payout_date", desc=False).limit(20000).execute().data
-        p_df = pd.DataFrame(payouts) if payouts else pd.DataFrame()
-        if not p_df.empty: p_df['payout_date'] = pd.to_datetime(p_df['payout_date'])
+        # Pre-filter payouts for this ticker
+        ticker_payouts = payout_data[payout_data['ticker'] == ticker] if not payout_data.empty else pd.DataFrame()
 
-        # 3. SNIPE PERIODS (Absolute Multipliers)
         for col, days in PERIODS.items():
-            target_date = (anchor_date - timedelta(days=days)).strftime('%Y-%m-%d')
+            target_date = anchor_date - timedelta(days=days)
             
-            past_res = supabase.table("daily_nav").select("validity_date, nav")\
-                .eq("ticker", ticker).lte("validity_date", target_date)\
-                .gt("nav", 0).order("validity_date", desc=True).limit(1).execute().data
+            # Find closest price on or before target date
+            past_prices = ticker_prices[ticker_prices['validity_date'] <= target_date]
             
-            if not past_res:
-                past_res = supabase.table("benchmarks").select("validity_date, value")\
-                    .eq("ticker", ticker).lte("validity_date", target_date)\
-                    .gt("value", 0).order("validity_date", desc=True).limit(1).execute().data
-                if past_res: past_res[0]['nav'] = past_res[0]['value']
-
-            if not past_res:
+            if past_prices.empty:
                 stats_update[col] = None
                 continue
 
-            past_nav = past_res[0]['nav']
-            past_date = pd.to_datetime(past_res[0]['validity_date'])
+            past_row = past_prices.iloc[0]
+            past_nav = past_row['nav']
+            past_date = past_row['validity_date']
 
-            # Total Return Multiplier
+            # Total Return Calculation
             units = 1.0
-            if not p_df.empty:
-                rel_payouts = p_df[(p_df['payout_date'] > past_date) & (p_df['payout_date'] <= anchor_date)]
+            if not ticker_payouts.empty:
+                # Get relevant payouts between past_date and anchor_date
+                rel_payouts = ticker_payouts[(ticker_payouts['payout_date'] > past_date) & 
+                                             (ticker_payouts['payout_date'] <= anchor_date)].sort_values('payout_date')
+                
                 for _, p_row in rel_payouts.iterrows():
                     if p_row['ex_nav'] > 0:
                         units += (units * p_row['payout_amount']) / p_row['ex_nav']
@@ -82,32 +96,14 @@ def process_single_ticker(ticker):
             multiplier = (latest_nav * units) / past_nav
             stats_update[col] = round(float(multiplier), 4)
 
-        supabase.table("performance_stats").upsert(stats_update, on_conflict="ticker").execute()
-        return f"✅ {ticker}: Absolute Multiplier Calculated."
+        final_stats.append(stats_update)
 
-    except Exception as e:
-        return f"❌ {ticker}: {str(e)}"
+    # 4. BULK UPSERT TO SUPABASE (One single network call!)
+    if final_stats:
+        supabase.table("performance_stats").upsert(final_stats, on_conflict="ticker").execute()
+        print(f"✅ Calculated and updated {len(final_stats)} tickers.")
 
-def run_speed_engine_v10_1():
-    print("🚀 Starting V10.1: Multi-Threaded Absolute Snipe...")
-    
-    # Check connection before starting
-    if not supabase:
-        print("❌ Supabase client not initialized. Aborting.")
-        return
-
-    funds = supabase.table("master_funds").select("ticker").execute().data
-    benchmarks = supabase.table("benchmarks").select("ticker").execute().data
-    all_tickers = list(set([f['ticker'] for f in funds] + [b['ticker'] for b in benchmarks]))
-
-    # ThreadPoolExecutor for speed
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        results = list(executor.map(process_single_ticker, all_tickers))
-    
-    for r in results:
-        print(r)
-    
-    print("\n" + "="*30 + "\nSync Complete. Check performance_stats table.")
+    print(f"🎉 Brain Sync Complete. Total Time: {datetime.now() - start_time}")
 
 if __name__ == "__main__":
-    run_speed_engine_v10_1()
+    run_optimized_brain()
