@@ -1,5 +1,0 @@
-pandas
-supabase
-beautifulsoup4
-requests
-lxml
