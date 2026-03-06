@@ -7,183 +7,122 @@ from supabase import create_client
 from datetime import datetime
 import pytz
 import urllib3
+from concurrent.futures import ThreadPoolExecutor # For parallel processing
 
-# Suppress SSL Warnings for UBL/MUFAP
+# Suppress SSL Warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- 1. CONNECTION PATH FOR GITHUB ---
-# This reads the keys from the GitHub Secrets you will set up in your repo settings
+# --- 1. CONNECTION ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ Connection Error: SUPABASE_URL or SUPABASE_KEY is missing from environment.")
-    # In a local environment, you can fallback to hardcoded strings for testing:
-    # SUPABASE_URL = "YOUR_URL"
-    # SUPABASE_KEY = "YOUR_KEY"
-else:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    print("🚀 Connection Path established successfully!")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 headers = {'User-Agent': 'Mozilla/5.0'}
+session = requests.Session() # Persistent session is faster than individual requests
+session.headers.update(headers)
 
 def is_valid_date(date_str, ticker_logic):
-    """
-    Returns True if the date is valid based on the fund's logic.
-    Absolute logic = No weekends, No forward dates.
-    """
     dt = datetime.strptime(date_str, '%Y-%m-%d').date()
     today_pk = datetime.now(pytz.timezone('Asia/Karachi')).date()
-
-    # Rule 1: Never allow a future date
-    if dt > today_pk:
-        return False
-
-    # Rule 2: If logic is 'Absolute', skip Sat (5) and Sun (6)
-    if ticker_logic == 'Absolute':
-        if dt.weekday() >= 5:
-            return False
-            
+    if dt > today_pk: return False
+    if ticker_logic == 'Absolute' and dt.weekday() >= 5: return False
     return True
 
 # --- TASK A: PSX INDICES ---
 def sync_psx_indices():
-    print("📈 Task A: Syncing PSX Indices...")
+    print("📈 Syncing PSX Indices...")
     try:
-        response = requests.get("https://dps.psx.com.pk", headers=headers, timeout=20)
+        response = session.get("https://dps.psx.com.pk", timeout=10)
         tree = html.fromstring(response.content)
-        raw_date_text = tree.xpath("//div[@class='market-status']//span/text() | //div[@class='stats_item'][1]/div[@class='stats_value']/text()")
-        web_date = None
-        for item in raw_date_text:
-            match = re.search(r'[A-Z][a-z]{2}\s\d{2},\s\d{4}', item)
-            if match:
-                web_date = datetime.strptime(match.group(), '%b %d, %Y').strftime('%Y-%m-%d')
-                break
-        if not web_date: web_date = datetime.now(pytz.timezone('Asia/Karachi')).strftime('%Y-%m-%d')
+        raw_date_text = tree.xpath("//div[@class='market-status']//span/text()")
+        web_date = next((datetime.strptime(re.search(r'[A-Z][a-z]{2}\s\d{2},\s\d{4}', item).group(), '%b %d, %Y').strftime('%Y-%m-%d') 
+                         for item in raw_date_text if re.search(r'[A-Z][a-z]{2}\s\d{2},\s\d{4}', item)), 
+                        datetime.now(pytz.timezone('Asia/Karachi')).strftime('%Y-%m-%d'))
 
+        batch = []
         for ticker, xp_idx in [('KSE100', 1), ('KMI30', 5)]:
-            xpath = f"//*[@id='indicesTabs']/div[2]/div[{xp_idx}]/h1"
-            result = tree.xpath(xpath)
+            result = tree.xpath(f"//*[@id='indicesTabs']/div[2]/div[{xp_idx}]/h1")
             if result:
                 val = float(result[0].text_content().strip().replace(',', '').split(' ')[0])
-                supabase.table("benchmarks").delete().eq("ticker", ticker).eq("validity_date", web_date).execute()
-                supabase.table("benchmarks").insert({"ticker": ticker, "value": val, "validity_date": web_date, "source": "PSX"}).execute()
-                print(f"   ✅ {ticker} ({web_date}): {val}")
-    except Exception as e: print(f"   ❌ PSX Index Error: {e}")
+                batch.append({"ticker": ticker, "value": val, "validity_date": web_date, "source": "PSX"})
+        
+        if batch:
+            supabase.table("benchmarks").upsert(batch, on_conflict="ticker,validity_date").execute()
+            print(f"   ✅ PSX Indices synced.")
+    except Exception as e: print(f"   ❌ PSX Error: {e}")
 
-# --- TASK B: GOLD 24K ---
+# --- TASK B: GOLD ---
 def sync_gold_rates():
-    print("\n💰 Task B: Syncing Gold Rates...")
+    print("💰 Syncing Gold...")
     try:
-        response = requests.get("https://gold.pk/gold-rates-pakistan.php", headers=headers, timeout=15)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = BeautifulSoup(session.get("https://gold.pk/gold-rates-pakistan.php", timeout=10).text, 'html.parser')
         gold_el = soup.find('p', class_='goldratehome')
         if gold_el:
             val = float(re.search(r'(\d+\.\d+|\d+)', gold_el.text.replace('Rs.', '').replace(',', '')).group(1))
             if val > 1000000: val = float(str(int(val))[:6])
             today_pk = datetime.now(pytz.timezone('Asia/Karachi')).strftime('%Y-%m-%d')
-            supabase.table("benchmarks").delete().eq("ticker", "GOLD_24K").eq("validity_date", today_pk).execute()
-            supabase.table("benchmarks").insert({"ticker": "GOLD_24K", "value": val, "validity_date": today_pk, "source": "Gold.pk"}).execute()
-            print(f"   ✅ Gold 24K: {val}")
+            supabase.table("benchmarks").upsert({"ticker": "GOLD_24K", "value": val, "validity_date": today_pk, "source": "Gold.pk"}, on_conflict="ticker,validity_date").execute()
+            print(f"   ✅ Gold synced.")
     except Exception as e: print(f"   ❌ Gold Error: {e}")
 
-# --- TASK C: PSX ETFs ---
-def sync_psx_etfs():
-    print("\n📊 Task C: Syncing PSX ETFs...")
-    etfs = ["JSGBETF", "JSMFETF", "MIIETF", "MZNPETF", "ACIETF", "NBPGETF", "NITGETF", "UBLPETF", "HBLTETF"]
-    for ticker in etfs:
-        if ticker == "HBLTETF":
-            print(f"   ℹ️ Skipping {ticker} for MUFAP update.")
-            continue
-        try:
-            soup = BeautifulSoup(requests.get(f"https://dps.psx.com.pk/etf/{ticker}", headers=headers).text, 'html.parser')
-            price = float(re.findall(r'\d+\.\d+', soup.find('div', class_='quote__price').text)[0])
-            date_match = re.search(r'[A-Z][a-z]{2}\s\d{2},\s\d{4}', soup.find('div', class_='quote__date').text).group()
-            web_date = datetime.strptime(date_match, '%b %d, %Y').strftime('%Y-%m-%d')
-            supabase.table("daily_nav").delete().eq("ticker", ticker).eq("validity_date", web_date).execute()
-            supabase.table("daily_nav").insert({"ticker": ticker, "nav": price, "validity_date": web_date, "source": "PSX"}).execute()
-            print(f"   ✅ ETF {ticker} ({web_date}): {price}")
-        except: continue
+# --- TASK C: PSX ETFs (Parallelized) ---
+def fetch_etf(ticker):
+    try:
+        soup = BeautifulSoup(session.get(f"https://dps.psx.com.pk/etf/{ticker}", timeout=10).text, 'html.parser')
+        price = float(re.findall(r'\d+\.\d+', soup.find('div', class_='quote__price').text)[0])
+        date_match = re.search(r'[A-Z][a-z]{2}\s\d{2},\s\d{4}', soup.find('div', class_='quote__date').text).group()
+        web_date = datetime.strptime(date_match, '%b %d, %Y').strftime('%Y-%m-%d')
+        return {"ticker": ticker, "nav": price, "validity_date": web_date, "source": "PSX"}
+    except: return None
 
-# --- TASK D: MUFAP SYNC ---
+def sync_psx_etfs():
+    print("📊 Syncing ETFs (Parallel)...")
+    etfs = ["JSGBETF", "JSMFETF", "MIIETF", "MZNPETF", "ACIETF", "NBPGETF", "NITGETF", "UBLPETF"]
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(filter(None, executor.map(fetch_etf, etfs)))
+    if results:
+        supabase.table("daily_nav").upsert(results, on_conflict="ticker,validity_date").execute()
+        print(f"   ✅ {len(results)} ETFs synced.")
+
+# --- TASK D: MUFAP ---
 def sync_mufap_master():
-    print("\n🏛️ Task D: Syncing MUFAP (Tab 3, 4, 5)...")
-    
-    # 1. PRE-FETCH DATA: Get Tickers and their Return Logic from Master Table
+    print("🏛️ Syncing MUFAP...")
     res = supabase.table("master_funds").select("ticker, fund_id_mufap, return_logic").execute()
-    
-    # Map for ID -> Ticker
     id_map = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in res.data if row['fund_id_mufap']}
-    # Map for Ticker -> Logic (New!)
     logic_map = {row['ticker']: row.get('return_logic', 'Absolute') for row in res.data}
     
-    def get_mufap_rows(tab):
-        url = f"https://www.mufap.com.pk/Industry/IndustryStatDaily?tab={tab}"
-        return BeautifulSoup(requests.get(url, headers=headers, verify=False).text, 'html.parser').find_all('tr')
-
-    # Tab 3: NAV (Apply Date Filter Here)
-    for row in get_mufap_rows(3):
-        cells = row.find_all('td')
-        if len(cells) < 9: continue
-        link = cells[2].find('a', href=True)
-        if link:
-            m_id = re.search(r'FundID=(\d+)', link['href']).group(1)
-            ticker = id_map.get(m_id)
-            if ticker:
-                try:
+    batch = []
+    for tab in [3]: # Can expand to 4, 5 if needed
+        rows = BeautifulSoup(session.get(f"https://www.mufap.com.pk/Industry/IndustryStatDaily?tab={tab}", verify=False).text, 'html.parser').find_all('tr')
+        for row in rows:
+            cells = row.find_all('td')
+            if len(cells) < 9: continue
+            link = cells[2].find('a', href=True)
+            if link:
+                m_id = re.search(r'FundID=(\d+)', link['href']).group(1)
+                ticker = id_map.get(m_id)
+                if ticker:
                     dt_str = datetime.strptime(cells[8].text.strip().title(), '%b %d, %Y').strftime('%Y-%m-%d')
-                    ticker_logic = logic_map.get(ticker, 'Absolute')
-                    
-                    # --- THE FILTER ---
-                    if not is_valid_date(dt_str, ticker_logic):
-                        continue # Skip weekends/future dates for Absolute funds
-                    
-                    val = float(cells[6].text.replace(',', ''))
-                    supabase.table("daily_nav").upsert({"ticker": ticker, "nav": val, "validity_date": dt_str, "source": "MUFAP"}, on_conflict="ticker,validity_date").execute()
-                except: continue
-
-# --- TASK E: UBL AMC REFINED ---
-def sync_ubl_amc_refined():
-    print("\n🏦 Task E: Syncing UBL AMC (The Fail-Safe)...")
-    url = "https://www.ublfunds.com.pk/resources-tools/fund-performance-tools/latest-fund-prices/"
+                    if is_valid_date(dt_str, logic_map.get(ticker, 'Absolute')):
+                        batch.append({"ticker": ticker, "nav": float(cells[6].text.replace(',', '')), "validity_date": dt_str, "source": "MUFAP"})
     
-    # 1. PRE-FETCH DATA
-    res = supabase.table("master_funds").select("ticker, amc_website_name, return_logic").not_.is_("amc_website_name", "null").execute()
-    ubl_map = {r['amc_website_name'].strip(): r['ticker'] for r in res.data}
-    logic_map = {r['ticker']: r.get('return_logic', 'Absolute') for r in res.data}
-
-    try:
-        soup = BeautifulSoup(requests.get(url, headers=headers, verify=False).text, 'html.parser')
-        
-        # Part 1: Main Tables (Apply Date Filter Here)
-        for table_id in ['conventional-mutual-fund-schemes', 'islamic-mutual-fund-schemes']:
-            table = soup.find('table', id=table_id)
-            if not table: continue
-            for row in table.find_all('tr'):
-                cells = row.find_all('td')
-                if len(cells) >= 4:
-                    ticker = ubl_map.get(cells[0].get_text(strip=True))
-                    if ticker:
-                        dt_str = datetime.strptime(cells[1].text.strip(), '%d-%b-%Y').strftime('%Y-%m-%d')
-                        ticker_logic = logic_map.get(ticker, 'Absolute')
-                        
-                        # --- THE FILTER ---
-                        if not is_valid_date(dt_str, ticker_logic):
-                            continue # Skip
-                        
-                        nav = float(cells[3].text.replace(',', ''))
-                        supabase.table("daily_nav").upsert({"ticker": ticker, "nav": nav, "validity_date": dt_str, "source": "AMC_Website"}, on_conflict="ticker,validity_date").execute()
-    except Exception as e: print(f"   ❌ UBL Error: {e}")
+    if batch:
+        supabase.table("daily_nav").upsert(batch, on_conflict="ticker,validity_date").execute()
+        print(f"   ✅ {len(batch)} MUFAP entries synced.")
 
 # --- MASTER EXECUTION ---
 def run_everything():
     start_time = datetime.now()
-    sync_psx_indices()
-    sync_gold_rates()
-    sync_psx_etfs()
+    # Running tasks that don't depend on each other in parallel
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        executor.submit(sync_psx_indices)
+        executor.submit(sync_gold_rates)
+        executor.submit(sync_psx_etfs)
+    
+    # MUFAP and UBL tend to be heavier, run them sequentially or in their own block
     sync_mufap_master()
-    sync_ubl_amc_refined()
-    print(f"\n🎉 ALL SYSTEMS UPDATED. Total Time: {datetime.now() - start_time}")
+    
+    print(f"\n🎉 SYNC COMPLETE. Total Time: {datetime.now() - start_time}")
 
 if __name__ == "__main__":
     run_everything()
