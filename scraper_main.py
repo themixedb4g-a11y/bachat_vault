@@ -7,7 +7,7 @@ from supabase import create_client
 from datetime import datetime
 import pytz
 import urllib3
-from concurrent.futures import ThreadPoolExecutor # For parallel processing
+from concurrent.futures import ThreadPoolExecutor
 
 # Suppress SSL Warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -18,7 +18,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 headers = {'User-Agent': 'Mozilla/5.0'}
-session = requests.Session() # Persistent session is faster than individual requests
+session = requests.Session()
 session.headers.update(headers)
 
 def is_valid_date(date_str, ticker_logic):
@@ -48,7 +48,6 @@ def sync_psx_indices():
         
         if batch:
             supabase.table("benchmarks").upsert(batch, on_conflict="ticker,validity_date").execute()
-            print(f"   ✅ PSX Indices synced.")
     except Exception as e: print(f"   ❌ PSX Error: {e}")
 
 # --- TASK B: GOLD ---
@@ -62,10 +61,9 @@ def sync_gold_rates():
             if val > 1000000: val = float(str(int(val))[:6])
             today_pk = datetime.now(pytz.timezone('Asia/Karachi')).strftime('%Y-%m-%d')
             supabase.table("benchmarks").upsert({"ticker": "GOLD_24K", "value": val, "validity_date": today_pk, "source": "Gold.pk"}, on_conflict="ticker,validity_date").execute()
-            print(f"   ✅ Gold synced.")
     except Exception as e: print(f"   ❌ Gold Error: {e}")
 
-# --- TASK C: PSX ETFs (Parallelized) ---
+# --- TASK C: PSX ETFs ---
 def fetch_etf(ticker):
     try:
         soup = BeautifulSoup(session.get(f"https://dps.psx.com.pk/etf/{ticker}", timeout=10).text, 'html.parser')
@@ -76,50 +74,60 @@ def fetch_etf(ticker):
     except: return None
 
 def sync_psx_etfs():
-    print("📊 Syncing ETFs (Parallel)...")
+    print("📊 Syncing ETFs...")
     etfs = ["JSGBETF", "JSMFETF", "MIIETF", "MZNPETF", "ACIETF", "NBPGETF", "NITGETF", "UBLPETF"]
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         results = list(filter(None, executor.map(fetch_etf, etfs)))
     if results:
         supabase.table("daily_nav").upsert(results, on_conflict="ticker,validity_date").execute()
-        print(f"   ✅ {len(results)} ETFs synced.")
 
-# --- TASK D: MUFAP ---
+# --- TASK D: TARGETED MUFAP SCAN (The Speed Fix) ---
 def sync_mufap_master():
-    print("🏛️ Syncing MUFAP...")
-    res = supabase.table("master_funds").select("ticker, fund_id_mufap, return_logic").execute()
-    id_map = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in res.data if row['fund_id_mufap']}
+    print("🏛️ Syncing MUFAP (Targeted)...")
+    # 1. Fetch only the funds we care about
+    res = supabase.table("master_funds").select("ticker, fund_id_mufap, return_logic").not_.is_("fund_id_mufap", "null").execute()
+    
+    # Create a set of IDs for ultra-fast lookup
+    target_ids = {str(int(float(row['fund_id_mufap']))) for row in res.data}
+    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in res.data}
     logic_map = {row['ticker']: row.get('return_logic', 'Absolute') for row in res.data}
     
     batch = []
-    for tab in [3]: # Can expand to 4, 5 if needed
-        rows = BeautifulSoup(session.get(f"https://www.mufap.com.pk/Industry/IndustryStatDaily?tab={tab}", verify=False).text, 'html.parser').find_all('tr')
-        for row in rows:
-            cells = row.find_all('td')
-            if len(cells) < 9: continue
-            link = cells[2].find('a', href=True)
-            if link:
-                m_id = re.search(r'FundID=(\d+)', link['href']).group(1)
-                ticker = id_map.get(m_id)
-                if ticker:
+    # Scraping Tab 3 (Daily NAVs)
+    soup = BeautifulSoup(session.get("https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=3", verify=False).text, 'lxml')
+    rows = soup.find_all('tr')
+
+    for row in rows:
+        cells = row.find_all('td')
+        if len(cells) < 9: continue
+        
+        link = cells[2].find('a', href=True)
+        if link:
+            m_id = re.search(r'FundID=(\d+)', link['href']).group(1)
+            
+            # --- THE OPTIMIZATION: ONLY PROCESS TARGET IDS ---
+            if m_id in target_ids:
+                ticker = id_to_ticker[m_id]
+                try:
                     dt_str = datetime.strptime(cells[8].text.strip().title(), '%b %d, %Y').strftime('%Y-%m-%d')
                     if is_valid_date(dt_str, logic_map.get(ticker, 'Absolute')):
-                        batch.append({"ticker": ticker, "nav": float(cells[6].text.replace(',', '')), "validity_date": dt_str, "source": "MUFAP"})
+                        nav = float(cells[6].text.replace(',', ''))
+                        batch.append({"ticker": ticker, "nav": nav, "validity_date": dt_str, "source": "MUFAP"})
+                except: continue
     
     if batch:
         supabase.table("daily_nav").upsert(batch, on_conflict="ticker,validity_date").execute()
-        print(f"   ✅ {len(batch)} MUFAP entries synced.")
+        print(f"   ✅ {len(batch)} targeted MUFAP funds synced.")
 
-# --- MASTER EXECUTION ---
 def run_everything():
     start_time = datetime.now()
-    # Running tasks that don't depend on each other in parallel
+    # Task group 1: PSX and Gold (Parallel)
     with ThreadPoolExecutor(max_workers=3) as executor:
         executor.submit(sync_psx_indices)
         executor.submit(sync_gold_rates)
         executor.submit(sync_psx_etfs)
     
-    # MUFAP and UBL tend to be heavier, run them sequentially or in their own block
+    # Task group 2: MUFAP (Optimized)
     sync_mufap_master()
     
     print(f"\n🎉 SYNC COMPLETE. Total Time: {datetime.now() - start_time}")
