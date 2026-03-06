@@ -14,14 +14,15 @@ from concurrent.futures import ThreadPoolExecutor
 # Suppress SSL Warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- 1. CONNECTION ---
+# --- # --- 1. CONNECTION ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
-headers = {'User-Agent': 'Mozilla/5.0'}
-session = requests.Session()
-session.headers.update(headers)
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("❌ ERROR: Supabase Keys are missing from GitHub Secrets!")
+    sys.exit(1) # This stops the script cleanly
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def is_valid_date(date_str, ticker_logic):
     dt = datetime.strptime(date_str, '%Y-%m-%d').date()
