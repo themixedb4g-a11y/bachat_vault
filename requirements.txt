@@ -1,0 +1,7 @@
+supabase
+beautifulsoup4
+pytz
+lxml
+requests
+pandas
+urllib3
