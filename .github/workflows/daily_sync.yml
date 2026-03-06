@@ -1,0 +1,34 @@
+name: Bachat Vault Master Sync
+
+on:
+  schedule:
+    # 1. Hourly Updates (For Funds)
+    - cron: '0 * * * *' 
+    # 2. 5 PM PST (12:00 UTC) - ETFs, Benchmarks, Payouts
+    - cron: '0 12 * * *'
+    # 3. 7 PM PST (14:00 UTC) - ETFs, Benchmarks
+    - cron: '0 14 * * *'
+    # 4. 8 AM PST (03:00 UTC) - Payouts
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Allows manual run
+
+jobs:
+  sync_and_calculate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run Master Scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python scraper_main.py
+      - name: Run Brain Engine (V10.1)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python brain_v10.py
