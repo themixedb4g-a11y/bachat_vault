@@ -11,6 +11,11 @@ on:
 jobs:
   sync_and_calculate:
     runs-on: ubuntu-latest
+    # THIS IS THE MISSING PIECE:
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+    
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
@@ -21,17 +26,4 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run 2-Hourly Fund Sync
-        if: github.event.schedule == '0 */2 * * *'
-        run: python scraper_main.py --mode funds
-
-      - name: Run Twice-Daily Market Sync
-        if: github.event.schedule == '0 3,12 * * *'
-        run: python scraper_main.py --mode market
-
-      - name: Run Manual Full Sync
-        if: github.event_name == 'workflow_dispatch'
-        run: python scraper_main.py --mode full
-
-      - name: Run Brain Engine
-        run: python brain.py
+      # ... (the rest of your steps stay the same)
