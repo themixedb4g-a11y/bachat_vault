@@ -25,5 +25,11 @@ jobs:
       
       - name: Install dependencies
         run: pip install -r requirements.txt
+      
+      - name: Run Python Scraper
+        run: python scraper_main.py  # <-- Change this to your actual scraping script name
+
+      - name: Run Brain
+        run: python brain.py
 
       # ... (the rest of your steps stay the same)
