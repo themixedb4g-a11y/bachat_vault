@@ -21,15 +21,31 @@ PERIODS = {
     "return_15y": 5475, "return_20y": 7300
 }
 
+# --- THE FIX: PAGINATION HELPER ---
+def fetch_all_data(table_name, columns):
+    all_data = []
+    offset = 0
+    limit = 1000
+    while True:
+        res = supabase.table(table_name).select(columns).range(offset, offset + limit - 1).execute()
+        data = res.data
+        if not data:
+            break
+        all_data.extend(data)
+        if len(data) < limit:
+            break
+        offset += limit
+    return pd.DataFrame(all_data)
+
 def run_optimized_brain():
     print("🧠 Starting Optimized Brain Engine...")
     start_time = datetime.now()
 
-    # 1. BULK FETCH ALL DATA (The "Library" approach)
-    # We fetch enough data for calculations (last 20 years if needed)
-    nav_data = pd.DataFrame(supabase.table("daily_nav").select("ticker, validity_date, nav").execute().data)
-    bench_data = pd.DataFrame(supabase.table("benchmarks").select("ticker, validity_date, value").execute().data)
-    payout_data = pd.DataFrame(supabase.table("payout_history").select("ticker, payout_date, payout_amount, ex_nav").execute().data)
+    # 1. BULK FETCH ALL DATA (Bypassing the 1000 row limit)
+    print("📦 Downloading historical data safely...")
+    nav_data = fetch_all_data("daily_nav", "ticker, validity_date, nav")
+    bench_data = fetch_all_data("benchmarks", "ticker, validity_date, value")
+    payout_data = fetch_all_data("payout_history", "ticker, payout_date, payout_amount, ex_nav")
 
     if nav_data.empty and bench_data.empty:
         print("❌ No price data found. Aborting.")
