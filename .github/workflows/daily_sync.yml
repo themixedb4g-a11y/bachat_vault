@@ -26,10 +26,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       
-      - name: Run Python Scraper
-        run: python scraper_main.py  # <-- Change this to your actual scraping script name
-
-      - name: Run Brain
+- name: Run Scrapers
+        run: python scraper_main.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          
+      - name: Run Institutional Brain Engine (Daily Only)
+        if: github.event.schedule == '0 12 * * *' || github.event_name == 'workflow_dispatch'
         run: python brain.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
       # ... (the rest of your steps stay the same)
