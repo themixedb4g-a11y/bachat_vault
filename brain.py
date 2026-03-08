@@ -1,4 +1,5 @@
 import os
+import math
 import pandas as pd
 from datetime import datetime, timedelta
 from supabase import create_client
@@ -21,7 +22,7 @@ PERIODS = {
     "return_15y": 5475, "return_20y": 7300
 }
 
-# --- THE FIX: PAGINATION HELPER ---
+# --- PAGINATION HELPER ---
 def fetch_all_data(table_name, columns):
     all_data = []
     offset = 0
@@ -38,14 +39,16 @@ def fetch_all_data(table_name, columns):
     return pd.DataFrame(all_data)
 
 def run_optimized_brain():
-    print("🧠 Starting Optimized Brain Engine...")
+    print("🧠 Starting Institutional Brain Engine...")
     start_time = datetime.now()
 
-    # 1. BULK FETCH ALL DATA (Bypassing the 1000 row limit)
+    # 1. BULK FETCH ALL DATA
     print("📦 Downloading historical data safely...")
     nav_data = fetch_all_data("daily_nav", "ticker, validity_date, nav")
     bench_data = fetch_all_data("benchmarks", "ticker, validity_date, value")
     payout_data = fetch_all_data("payout_history", "ticker, payout_date, payout_amount, ex_nav")
+    # NEW: Fetch inception dates
+    funds_data = fetch_all_data("master_funds", "ticker, inception_date")
 
     if nav_data.empty and bench_data.empty:
         print("❌ No price data found. Aborting.")
@@ -61,12 +64,16 @@ def run_optimized_brain():
     all_prices['validity_date'] = pd.to_datetime(all_prices['validity_date'])
     if not payout_data.empty:
         payout_data['payout_date'] = pd.to_datetime(payout_data['payout_date'])
+    
+    # Safely convert inception dates, coercing errors to NaT
+    if not funds_data.empty:
+        funds_data['inception_date'] = pd.to_datetime(funds_data['inception_date'], errors='coerce')
 
     # 2. GET TICKERS
     all_tickers = all_prices['ticker'].unique()
     final_stats = []
 
-    # 3. CALCULATE IN MEMORY (Fast!)
+    # 3. CALCULATE IN MEMORY
     for ticker in all_tickers:
         ticker_prices = all_prices[all_prices['ticker'] == ticker].sort_values('validity_date', ascending=False)
         if ticker_prices.empty: continue
@@ -74,6 +81,10 @@ def run_optimized_brain():
         anchor_row = ticker_prices.iloc[0]
         anchor_date = anchor_row['validity_date']
         latest_nav = anchor_row['nav']
+        
+        # Guard against zero/corrupt latest NAV
+        if pd.isna(latest_nav) or latest_nav <= 0:
+            continue
 
         stats_update = {
             "ticker": ticker, 
@@ -81,27 +92,48 @@ def run_optimized_brain():
             "last_validity_date": anchor_date.strftime('%Y-%m-%d')
         }
 
-        # Pre-filter payouts for this ticker
+        # Get inception date for this ticker
+        ticker_fund_info = funds_data[funds_data['ticker'] == ticker] if not funds_data.empty else pd.DataFrame()
+        inception_date = None
+        if not ticker_fund_info.empty and pd.notna(ticker_fund_info.iloc[0]['inception_date']):
+            inception_date = ticker_fund_info.iloc[0]['inception_date']
+
+        # Pre-filter payouts
         ticker_payouts = payout_data[payout_data['ticker'] == ticker] if not payout_data.empty else pd.DataFrame()
 
         for col, days in PERIODS.items():
             target_date = anchor_date - timedelta(days=days)
             
-            # Find closest price on or before target date
+            # --- NEW FIX: The Inception Guard ---
+            if inception_date and target_date < inception_date:
+                stats_update[col] = None
+                continue
+            
             past_prices = ticker_prices[ticker_prices['validity_date'] <= target_date]
             
             if past_prices.empty:
                 stats_update[col] = None
                 continue
 
-            past_row = past_prices.iloc[0]
-            past_nav = past_row['nav']
-            past_date = past_row['validity_date']
+            # --- NEW FIX: The 7-Day Fallback ---
+            valid_past_row = None
+            # Look at the closest 7 rows to the target date
+            for _, row in past_prices.head(7).iterrows():
+                if pd.notna(row['nav']) and row['nav'] > 0:
+                    valid_past_row = row
+                    break
+            
+            # If we still didn't find a valid >0 price after looking back 7 days, give up.
+            if valid_past_row is None:
+                stats_update[col] = None
+                continue
+
+            past_nav = valid_past_row['nav']
+            past_date = valid_past_row['validity_date']
 
             # Total Return Calculation
             units = 1.0
             if not ticker_payouts.empty:
-                # Get relevant payouts between past_date and anchor_date
                 rel_payouts = ticker_payouts[(ticker_payouts['payout_date'] > past_date) & 
                                              (ticker_payouts['payout_date'] <= anchor_date)].sort_values('payout_date')
                 
@@ -110,11 +142,16 @@ def run_optimized_brain():
                         units += (units * p_row['payout_amount']) / p_row['ex_nav']
 
             multiplier = (latest_nav * units) / past_nav
-            stats_update[col] = round(float(multiplier), 4)
+            
+            # Final JSON Safety check
+            if pd.isna(multiplier) or math.isinf(multiplier):
+                stats_update[col] = None
+            else:
+                stats_update[col] = round(float(multiplier), 4)
 
         final_stats.append(stats_update)
 
-    # 4. BULK UPSERT TO SUPABASE (One single network call!)
+    # 4. BULK UPSERT TO SUPABASE
     if final_stats:
         supabase.table("performance_stats").upsert(final_stats, on_conflict="ticker").execute()
         print(f"✅ Calculated and updated {len(final_stats)} tickers.")
