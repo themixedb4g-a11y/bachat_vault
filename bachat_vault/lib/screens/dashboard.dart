@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -48,7 +49,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     try {
       final masterResponse = await supabase.from('master_funds').select();
-      final statsResponse = await supabase.from('performance_stats').select();
+      final statsResponse = await supabase.from('performance_stats').select('ticker, return_1d, return_30d, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y, last_validity_date');
 
       final List<Map<String, dynamic>> combined = [];
       final Set<String> categorySet = {};
@@ -71,6 +72,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'return_10y': stats['return_10y'],
           'return_15y': stats['return_15y'],
           'return_20y': stats['return_20y'],
+          'last_validity_date': stats['last_validity_date'],
         });
 
         // Add to Categories
@@ -114,12 +116,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  String _getGreeting() {
+  String _getGreetingText() {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Good Morning';
     if (hour < 17) return 'Good Afternoon';
     if (hour < 20) return 'Good Evening';
     return 'Good Night';
+  }
+
+  String _getGreetingEmoji() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return '☀️';
+    if (hour < 17) return '🌤️';
+    if (hour < 20) return '🌙';
+    return '🌙';
   }
 
   String _getSortKey() {
@@ -198,16 +208,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final displayedFunds = _getFilteredAndSortedFunds();
     final sortKey = _getSortKey();
 
-    return Scaffold(
+    return Theme(
+      data: Theme.of(context).copyWith(
+        textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme),
+      ),
+      child: Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text(
-          _getGreeting(),
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _getGreetingText(),
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 8),
+            AnimatedEmoji(emoji: _getGreetingEmoji()),
+          ],
         ),
         centerTitle: false,
         backgroundColor: Colors.transparent,
@@ -233,9 +254,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF0F2027),
-              Color(0xFF203A43),
-              Color(0xFF2C5364),
+              Color(0xFF1E293B), // Premium Dark Slate
+              Color(0xFF0F172A), // Deeper Slate
+              Color(0xFF000000), // Black
             ],
           ),
         ),
@@ -426,8 +447,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     
                                     final returnFactor = (fund[sortKey] as num).toDouble();
                                     
+                                    final double percent = (returnFactor - 1.0) * 100.0;
                                     final double profitValue = _investmentAmount * (returnFactor - 1.0);
-                                    final double percentageValue = (returnFactor - 1.0) * 100.0;
                                     
                                     String profitString = _currencyFormat.format(profitValue.abs());
                                     String formattedValueDisplay = '';
@@ -439,14 +460,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       formattedValueDisplay = '0';
                                     }
 
-                                    String percentageString = '${percentageValue > 0 ? '+' : ''}${percentageValue.toStringAsFixed(2)}%';
+                                    String percentageString = '${percent > 0 ? '+' : ''}${percent.toStringAsFixed(2)}%';
                                     
                                     Color statColor = Colors.white70;
-                                    if (returnFactor > 1.0) {
+                                    if (percent > 0) {
                                       statColor = Colors.greenAccent;
-                                    } else if (returnFactor < 1.0) {
+                                    } else if (percent < 0) {
                                       statColor = Colors.redAccent.shade100;
                                     }
+
+                                    final lastValidityDate = fund['last_validity_date'] != null 
+                                      ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(fund['last_validity_date'].toString()) ?? DateTime.now())
+                                      : 'N/A';
 
                                     // Tight Layout logic
                                     return Container(
@@ -465,11 +490,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                             child: Column(
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
-                                                // Top row: AMC Name | Risk Profile
+                                                // Top row: AMC Name | Validity Date
                                                 Row(
                                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
                                                     Expanded(
+                                                      flex: 6,
                                                       child: Text(
                                                         amcName.toString().toUpperCase(),
                                                         style: const TextStyle(
@@ -482,20 +509,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                                         overflow: TextOverflow.ellipsis,
                                                       ),
                                                     ),
-                                                    Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.white.withOpacity(0.1),
-                                                        borderRadius: BorderRadius.circular(6),
-                                                      ),
-                                                      child: Text(
-                                                        'Risk: $riskProfile',
-                                                        style: const TextStyle(
-                                                          color: Colors.white70,
-                                                          fontSize: 9,
-                                                          fontWeight: FontWeight.w600,
-                                                        ),
-                                                      ),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      flex: 4,
+                                                      child: fund['last_validity_date'] != null
+                                                          ? Text(
+                                                              'Validity Date: $lastValidityDate',
+                                                              textAlign: TextAlign.right,
+                                                              style: const TextStyle(
+                                                                color: Colors.white70,
+                                                                fontSize: 9,
+                                                                fontWeight: FontWeight.w500,
+                                                              ),
+                                                            )
+                                                          : const SizedBox.shrink(),
                                                     ),
                                                   ],
                                                 ),
@@ -542,21 +569,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                                 // Equal Vertical Spacing (Bottom)
                                                 const SizedBox(height: 6),
                                                 
-                                                // Bottom Row: Category | Percentage
+                                                // Bottom Row: Risk | Category | Percentage
                                                 Row(
                                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                   children: [
                                                     Expanded(
                                                       flex: 6,
-                                                      child: Text(
-                                                        category.toString(),
-                                                        style: TextStyle(
-                                                          color: Colors.white.withOpacity(0.5),
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.w500,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
+                                                      child: Row(
+                                                        children: [
+                                                          if (riskProfile.toString().isNotEmpty)
+                                                            Container(
+                                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                              margin: const EdgeInsets.only(right: 6),
+                                                              decoration: BoxDecoration(
+                                                                color: Colors.white.withOpacity(0.1),
+                                                                borderRadius: BorderRadius.circular(6),
+                                                              ),
+                                                              child: Text(
+                                                                'Risk: $riskProfile',
+                                                                style: const TextStyle(
+                                                                  color: Colors.white70,
+                                                                  fontSize: 9,
+                                                                  fontWeight: FontWeight.w600,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          Expanded(
+                                                            child: Text(
+                                                              category.toString(),
+                                                              style: TextStyle(
+                                                                color: Colors.white.withOpacity(0.5),
+                                                                fontSize: 11,
+                                                                fontWeight: FontWeight.w500,
+                                                              ),
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                            ),
+                                                          ),
+                                                        ],
                                                       ),
                                                     ),
                                                     const SizedBox(width: 8),
@@ -588,6 +638,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
         ),
       ),
+    ));
+  }
+}
+
+class AnimatedEmoji extends StatefulWidget {
+  final String emoji;
+  const AnimatedEmoji({super.key, required this.emoji});
+
+  @override
+  State<AnimatedEmoji> createState() => _AnimatedEmojiState();
+}
+
+class _AnimatedEmojiState extends State<AnimatedEmoji>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(0, -0.15),
+        end: const Offset(0, 0.15),
+      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+      child: Text(widget.emoji, style: const TextStyle(fontSize: 22)),
     );
   }
 }
