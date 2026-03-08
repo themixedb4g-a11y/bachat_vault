@@ -146,8 +146,20 @@ def sync_ubl_amc_refined():
                                 batch.append({"ticker": ticker, "nav": float(cells[3].text.replace(',', '')), "validity_date": dt_str, "source": "AMC_Website"})
                         except: continue
         if batch:
-            supabase.table("daily_nav").upsert(batch, on_conflict="ticker,validity_date").execute()
-            print(f"   ✅ {len(batch)} UBL funds updated (Priority).")
+            print(f"   🔍 Raw UBL items scraped: {len(batch)}")
+            
+            # Crush duplicates using a dictionary
+            unique_batch = {}
+            for item in batch:
+                unique_batch[(item['ticker'], item['validity_date'])] = item
+                
+            final_batch = list(unique_batch.values())
+            print(f"   🧹 Clean UBL items after deduplication: {len(final_batch)}")
+            
+            # Send the clean batch to Supabase
+            supabase.table("daily_nav").upsert(final_batch, on_conflict="ticker,validity_date").execute()
+            print(f"   ✅ {len(final_batch)} UBL funds updated (Priority).")
+            
     except Exception as e: print(f"   ❌ UBL Error: {e}")
 
 if __name__ == "__main__":
