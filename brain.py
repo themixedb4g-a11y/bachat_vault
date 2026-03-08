@@ -28,7 +28,8 @@ def fetch_all_data(table_name, columns):
     offset = 0
     limit = 1000
     while True:
-        res = supabase.table(table_name).select(columns).range(offset, offset + limit - 1).execute()
+        # NEW FIX: Added .order('ticker') to guarantee stable pagination!
+        res = supabase.table(table_name).select(columns).order("ticker").range(offset, offset + limit - 1).execute()
         data = res.data
         if not data:
             break
@@ -62,6 +63,12 @@ def run_optimized_brain():
         all_prices = nav_data
 
     all_prices['validity_date'] = pd.to_datetime(all_prices['validity_date'])
+    
+    # --- DEDUPLICATION SAFETY NET ---
+    # Sort by date (newest first) and drop any duplicate dates for the same ticker
+    all_prices = all_prices.sort_values(by=['ticker', 'validity_date'], ascending=[True, False])
+    all_prices = all_prices.drop_duplicates(subset=['ticker', 'validity_date'], keep='first')
+
     if not payout_data.empty:
         payout_data['payout_date'] = pd.to_datetime(payout_data['payout_date'])
     
