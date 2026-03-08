@@ -29,8 +29,13 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 def is_valid_date(date_str, ticker_logic):
     dt = datetime.strptime(date_str, '%Y-%m-%d').date()
     today_pk = datetime.now(pytz.timezone('Asia/Karachi')).date()
+    
     if dt > today_pk: return False
-    if ticker_logic == 'Absolute' and dt.weekday() >= 5: return False
+    
+    # Using 'in' makes it immune to spaces, e.g., "Absolute Return "
+    if ticker_logic and 'Absolute' in ticker_logic and dt.weekday() >= 5: 
+        return False
+        
     return True
 
 # --- TASK A: PSX INDICES ---
