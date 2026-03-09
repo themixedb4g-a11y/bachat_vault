@@ -122,7 +122,7 @@ def sync_mufap_master():
                     try:
                         dt_str = datetime.strptime(cells[8].text.strip().title(), '%b %d, %Y').strftime('%Y-%m-%d')
                         if is_valid_date(dt_str, logic_map.get(ticker, 'Absolute')):
-                            batch.append({"ticker": ticker, "nav": float(cells[6].text.replace(',', '')), "validity_date": dt_str, "source": "MUFAP"})
+                            batch.append({"ticker": ticker, "nav": float(cells[7].text.replace(',', '')), "validity_date": dt_str, "source": "MUFAP"})
                     except: continue
         if batch:
             supabase.table("daily_nav").upsert(batch, on_conflict="ticker,validity_date").execute()
@@ -170,12 +170,96 @@ def sync_ubl_amc_refined():
             
     except Exception as e: print(f"   ❌ UBL Error: {e}")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", help="funds, market, or full")
-    args = parser.parse_args()
-    start_time = datetime.now()
+# --- TASK F: MUFAP PAYOUTS (Tab 4) ---
+def sync_mufap_payouts():
+    print("💸 Syncing MUFAP Payouts...")
+    res = supabase.table("master_funds").select("ticker, fund_id_mufap").not_.is_("fund_id_mufap", "null").execute()
+    
+    # 🛑 PAYOUT BLOCKLIST: Fetch payouts for everyone EXCEPT JSGBETF
+    target_ids = {str(int(float(row['fund_id_mufap']))) for row in res.data if row['ticker'] != "JSGBETF"}
+    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in res.data if row['ticker'] != "JSGBETF"}
+    
+    batch = []
+    try:
+        soup = BeautifulSoup(session.get("https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=4", verify=False, timeout=15).text, 'lxml')
+        for row in soup.find_all('tr'):
+            cells = row.find_all('td')
+            if len(cells) < 10: continue # Ensure row has enough columns
+            
+            link = cells[2].find('a', href=True)
+            if link and 'FundID=' in link['href']:
+                m_id = re.search(r'FundID=(\d+)', link['href']).group(1)
+                
+                if m_id in target_ids:
+                    ticker = id_to_ticker[m_id]
+                    try:
+                        payout_amount_str = cells[7].text.replace(',', '').strip()
+                        ex_nav_str = cells[8].text.replace(',', '').strip()
+                        payout_date_str = cells[9].text.strip()
+                        
+                        # Skip if the payout column is empty or has a dash
+                        if not payout_amount_str or payout_amount_str == '-':
+                            continue
+                            
+                        # Convert strings to floats/dates
+                        payout_amount = float(payout_amount_str)
+                        ex_nav = float(ex_nav_str) if ex_nav_str and ex_nav_str != '-' else 0.0
+                        dt_str = datetime.strptime(payout_date_str, '%b %d, %Y').strftime('%Y-%m-%d')
+                        
+                        batch.append({
+                            "ticker": ticker, 
+                            "payout_date": dt_str, 
+                            "payout_amount": payout_amount,
+                            "ex_nav": ex_nav
+                        })
+                    except: continue
+                    
+        if batch:
+            # Pushing exactly to your matching Supabase column names
+            supabase.table("payout_history").upsert(batch, on_conflict="ticker,payout_date").execute()
+            print(f"   ✅ {len(batch)} Payouts synced.")
+    except Exception as e: print(f"   ❌ Payouts Error: {e}")
 
+
+# --- TASK G: MUFAP TER (Tab 5) ---
+def sync_mufap_ter():
+    print("📊 Syncing MUFAP TER...")
+    res = supabase.table("master_funds").select("ticker, fund_id_mufap").not_.is_("fund_id_mufap", "null").execute()
+    
+    target_ids = {str(int(float(row['fund_id_mufap']))) for row in res.data}
+    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in res.data}
+    
+    batch = []
+    try:
+        soup = BeautifulSoup(session.get("https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=5", verify=False, timeout=15).text, 'lxml')
+        for row in soup.find_all('tr'):
+            cells = row.find_all('td')
+            if len(cells) < 10: continue
+            
+            link = cells[2].find('a', href=True)
+            if link and 'FundID=' in link['href']:
+                m_id = re.search(r'FundID=(\d+)', link['href']).group(1)
+                
+                if m_id in target_ids:
+                    ticker = id_to_ticker[m_id]
+                    try:
+                        ter_mtd_str = cells[8].text.replace('%', '').replace(',', '').strip()
+                        ter_ytd_str = cells[9].text.replace('%', '').replace(',', '').strip()
+                        
+                        # Safely convert to float, default to 0.0 if empty/invalid
+                        ter_mtd = float(ter_mtd_str) if ter_mtd_str and ter_mtd_str != '-' else 0.0
+                        ter_ytd = float(ter_ytd_str) if ter_ytd_str and ter_ytd_str != '-' else 0.0
+                        
+                        batch.append({"ticker": ticker, "ter_mtd": ter_mtd, "ter_ytd": ter_ytd})
+                    except: continue
+                    
+        if batch:
+            # IMPORTANT: Ensure your Supabase 'performance_stats' table has columns named 'ter_mtd' and 'ter_ytd'
+            supabase.table("performance_stats").upsert(batch, on_conflict="ticker").execute()
+            print(f"   ✅ {len(batch)} TER stats synced.")
+    except Exception as e: print(f"   ❌ TER Error: {e}")
+
+if __name__ == "__main__":
     if args.mode == "funds":
         sync_mufap_master()
         sync_ubl_amc_refined()
@@ -189,5 +273,7 @@ if __name__ == "__main__":
         sync_psx_etfs()
         sync_mufap_master()
         sync_ubl_amc_refined()
+        sync_mufap_payouts()  # <--- NEW
+        sync_mufap_ter()      # <--- NEW
 
     print(f"\n🎉 SYNC COMPLETE. Total Time: {datetime.now() - start_time}")
