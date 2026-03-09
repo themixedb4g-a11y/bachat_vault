@@ -98,28 +98,36 @@ def sync_psx_etfs():
 def sync_mufap_master():
     print("🏛️ Syncing MUFAP (Targeted)...")
     res = supabase.table("master_funds").select("ticker, fund_id_mufap, return_logic").not_.is_("fund_id_mufap", "null").execute()
-    target_ids = {str(int(float(row['fund_id_mufap']))) for row in res.data}
-    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in res.data}
+    
+    # 🛑 BLOCKLIST: Do not fetch NAVs from MUFAP for these specific PSX ETFs.
+    # (Notice HBLTETF is NOT in this list, so MUFAP will correctly fetch its NAV!)
+    psx_etfs = {"JSGBETF", "JSMFETF", "MIIETF", "MZNPETF", "ACIETF", "NBPGETF", "NITGETF", "UBLPETF"}
+    
+    # Build target lists but filter out the PSX ETFs
+    target_ids = {str(int(float(row['fund_id_mufap']))) for row in res.data if row['ticker'] not in psx_etfs}
+    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in res.data if row['ticker'] not in psx_etfs}
     logic_map = {row['ticker']: row.get('return_logic', 'Absolute') for row in res.data}
     
     batch = []
-    soup = BeautifulSoup(session.get("https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=3", verify=False).text, 'lxml')
-    for row in soup.find_all('tr'):
-        cells = row.find_all('td')
-        if len(cells) < 9: continue
-        link = cells[2].find('a', href=True)
-        if link:
-            m_id = re.search(r'FundID=(\d+)', link['href']).group(1)
-            if m_id in target_ids:
-                ticker = id_to_ticker[m_id]
-                try:
-                    dt_str = datetime.strptime(cells[8].text.strip().title(), '%b %d, %Y').strftime('%Y-%m-%d')
-                    if is_valid_date(dt_str, logic_map.get(ticker, 'Absolute')):
-                        batch.append({"ticker": ticker, "nav": float(cells[6].text.replace(',', '')), "validity_date": dt_str, "source": "MUFAP"})
-                except: continue
-    if batch:
-        supabase.table("daily_nav").upsert(batch, on_conflict="ticker,validity_date").execute()
-        print(f"   ✅ {len(batch)} MUFAP funds updated.")
+    try:
+        soup = BeautifulSoup(session.get("https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=3", verify=False, timeout=15).text, 'lxml')
+        for row in soup.find_all('tr'):
+            cells = row.find_all('td')
+            if len(cells) < 9: continue
+            link = cells[2].find('a', href=True)
+            if link:
+                m_id = re.search(r'FundID=(\d+)', link['href']).group(1)
+                if m_id in target_ids:
+                    ticker = id_to_ticker[m_id]
+                    try:
+                        dt_str = datetime.strptime(cells[8].text.strip().title(), '%b %d, %Y').strftime('%Y-%m-%d')
+                        if is_valid_date(dt_str, logic_map.get(ticker, 'Absolute')):
+                            batch.append({"ticker": ticker, "nav": float(cells[6].text.replace(',', '')), "validity_date": dt_str, "source": "MUFAP"})
+                    except: continue
+        if batch:
+            supabase.table("daily_nav").upsert(batch, on_conflict="ticker,validity_date").execute()
+            print(f"   ✅ {len(batch)} MUFAP funds updated.")
+    except Exception as e: print(f"   ❌ MUFAP Error: {e}")
 
 # --- TASK E: UBL AMC (Priority Overwrite) ---
 def sync_ubl_amc_refined():
