@@ -260,9 +260,16 @@ def sync_mufap_ter():
     except Exception as e: print(f"   ❌ TER Error: {e}")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", help="funds, market, or full")
+    args = parser.parse_args()
+    start_time = datetime.now()
+
     if args.mode == "funds":
         sync_mufap_master()
         sync_ubl_amc_refined()
+        sync_mufap_payouts()
+        sync_mufap_ter()
     elif args.mode == "market":
         sync_psx_indices()
         sync_psx_etfs()
@@ -273,7 +280,7 @@ if __name__ == "__main__":
         sync_psx_etfs()
         sync_mufap_master()
         sync_ubl_amc_refined()
-        sync_mufap_payouts()  # <--- NEW
-        sync_mufap_ter()      # <--- NEW
+        sync_mufap_payouts()
+        sync_mufap_ter()
 
     print(f"\n🎉 SYNC COMPLETE. Total Time: {datetime.now() - start_time}")
