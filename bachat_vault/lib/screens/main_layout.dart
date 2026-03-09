@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dashboard.dart';
+import 'calculators_screen.dart';
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
@@ -13,7 +14,7 @@ class _MainLayoutState extends State<MainLayout> {
 
   final List<Widget> _screens = [
     const DashboardScreen(),
-    const CalculatorsScreenPlaceholder(),
+    const CalculatorsScreen(),
   ];
 
   @override
@@ -54,41 +55,6 @@ class _MainLayoutState extends State<MainLayout> {
               label: 'Calculators',
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class CalculatorsScreenPlaceholder extends StatelessWidget {
-  const CalculatorsScreenPlaceholder({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0F2027),
-              Color(0xFF203A43),
-              Color(0xFF2C5364),
-            ],
-          ),
-        ),
-        child: const Center(
-          child: Text(
-            'Calculators Coming Soon',
-            style: TextStyle(
-              color: Colors.white54,
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 1.2,
-            ),
-          ),
         ),
       ),
     );
