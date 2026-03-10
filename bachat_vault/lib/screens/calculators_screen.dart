@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Added for input formatters
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -118,7 +119,8 @@ class LumpsumCalculator extends StatefulWidget {
 }
 
 class _LumpsumCalculatorState extends State<LumpsumCalculator> {
-  final TextEditingController _amountController = TextEditingController(text: '100000');
+  // Updated with Indian formatting default
+  final TextEditingController _amountController = TextEditingController(text: '1,00,000');
   final TextEditingController _rateController = TextEditingController(text: '12');
   final TextEditingController _yearsController = TextEditingController(text: '10');
 
@@ -143,9 +145,10 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> {
   }
 
   void _calculate() {
-    final double principal = double.tryParse(_amountController.text) ?? 0;
-    final double rate = double.tryParse(_rateController.text) ?? 0;
-    final double years = double.tryParse(_yearsController.text) ?? 0;
+    // Strip commas before parsing
+    final double principal = double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
+    final double rate = double.tryParse(_rateController.text.replaceAll(',', '')) ?? 0;
+    final double years = double.tryParse(_yearsController.text.replaceAll(',', '')) ?? 0;
 
     if (principal > 0 && years > 0) {
       final double finalValue = principal * pow((1 + (rate / 100)), years);
@@ -168,6 +171,7 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> {
     required String prefix,
     required String suffix,
     required TextEditingController controller,
+    bool isCurrency = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -183,6 +187,7 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> {
           child: TextField(
             controller: controller,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: isCurrency ? [IndianNumberFormatter()] : [],
             style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             onChanged: (val) => _calculate(),
             decoration: InputDecoration(
@@ -205,6 +210,19 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> {
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
+          // HEADLINE
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16.0, top: 8.0),
+            child: Text(
+              'Lumpsum Investment Calculator',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
           // Input Card
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
@@ -224,6 +242,7 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> {
                       prefix: 'PKR',
                       suffix: '',
                       controller: _amountController,
+                      isCurrency: true,
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -327,7 +346,7 @@ class SipCalculator extends StatefulWidget {
 }
 
 class _SipCalculatorState extends State<SipCalculator> {
-  final TextEditingController _amountController = TextEditingController(text: '10000');
+  final TextEditingController _amountController = TextEditingController(text: '10,000');
   final TextEditingController _stepUpController = TextEditingController(text: '10');
   final TextEditingController _rateController = TextEditingController(text: '12');
   final TextEditingController _yearsController = TextEditingController(text: '10');
@@ -354,10 +373,10 @@ class _SipCalculatorState extends State<SipCalculator> {
   }
 
   void _calculate() {
-    final double initialMonthlyInvestment = double.tryParse(_amountController.text) ?? 0;
-    final double stepUpPercentage = double.tryParse(_stepUpController.text) ?? 0;
-    final double expectedReturn = double.tryParse(_rateController.text) ?? 0;
-    final double years = double.tryParse(_yearsController.text) ?? 0;
+    final double initialMonthlyInvestment = double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
+    final double stepUpPercentage = double.tryParse(_stepUpController.text.replaceAll(',', '')) ?? 0;
+    final double expectedReturn = double.tryParse(_rateController.text.replaceAll(',', '')) ?? 0;
+    final double years = double.tryParse(_yearsController.text.replaceAll(',', '')) ?? 0;
 
     if (initialMonthlyInvestment > 0 && years > 0) {
       double totalBalance = 0;
@@ -396,6 +415,7 @@ class _SipCalculatorState extends State<SipCalculator> {
     required String prefix,
     required String suffix,
     required TextEditingController controller,
+    bool isCurrency = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -411,6 +431,7 @@ class _SipCalculatorState extends State<SipCalculator> {
           child: TextField(
             controller: controller,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: isCurrency ? [IndianNumberFormatter()] : [],
             style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             onChanged: (val) => _calculate(),
             decoration: InputDecoration(
@@ -433,6 +454,19 @@ class _SipCalculatorState extends State<SipCalculator> {
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
+          // HEADLINE
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16.0, top: 8.0),
+            child: Text(
+              'Systematic Investment Plan Calculator',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
           // Input Card
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
@@ -455,6 +489,7 @@ class _SipCalculatorState extends State<SipCalculator> {
                             prefix: 'PKR',
                             suffix: '',
                             controller: _amountController,
+                            isCurrency: true,
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -562,26 +597,6 @@ class _SipCalculatorState extends State<SipCalculator> {
   }
 }
 
-class PlaceholderCalculator extends StatelessWidget {
-  final String title;
-  const PlaceholderCalculator({super.key, required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.white54,
-          fontSize: 18,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 1.2,
-        ),
-      ),
-    );
-  }
-}
-
 class SwpCalculator extends StatefulWidget {
   const SwpCalculator({super.key});
 
@@ -590,8 +605,8 @@ class SwpCalculator extends StatefulWidget {
 }
 
 class _SwpCalculatorState extends State<SwpCalculator> {
-  final TextEditingController _amountController = TextEditingController(text: '5000000');
-  final TextEditingController _withdrawalController = TextEditingController(text: '40000');
+  final TextEditingController _amountController = TextEditingController(text: '50,00,000');
+  final TextEditingController _withdrawalController = TextEditingController(text: '40,000');
   final TextEditingController _rateController = TextEditingController(text: '12');
   final TextEditingController _inflationController = TextEditingController(text: '6');
   final TextEditingController _yearsController = TextEditingController(text: '20');
@@ -620,11 +635,11 @@ class _SwpCalculatorState extends State<SwpCalculator> {
   }
 
   void _calculate() {
-    final double totalInvestment = double.tryParse(_amountController.text) ?? 0;
-    final double initialMonthlyWithdrawal = double.tryParse(_withdrawalController.text) ?? 0;
-    final double expectedReturn = double.tryParse(_rateController.text) ?? 0;
-    final double inflation = double.tryParse(_inflationController.text) ?? 0;
-    final double years = double.tryParse(_yearsController.text) ?? 0;
+    final double totalInvestment = double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
+    final double initialMonthlyWithdrawal = double.tryParse(_withdrawalController.text.replaceAll(',', '')) ?? 0;
+    final double expectedReturn = double.tryParse(_rateController.text.replaceAll(',', '')) ?? 0;
+    final double inflation = double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0;
+    final double years = double.tryParse(_yearsController.text.replaceAll(',', '')) ?? 0;
 
     if (totalInvestment > 0 && initialMonthlyWithdrawal > 0 && years > 0) {
       double balance = totalInvestment;
@@ -674,6 +689,7 @@ class _SwpCalculatorState extends State<SwpCalculator> {
     required String prefix,
     required String suffix,
     required TextEditingController controller,
+    bool isCurrency = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -689,6 +705,7 @@ class _SwpCalculatorState extends State<SwpCalculator> {
           child: TextField(
             controller: controller,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: isCurrency ? [IndianNumberFormatter()] : [],
             style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             onChanged: (val) => _calculate(),
             decoration: InputDecoration(
@@ -723,6 +740,19 @@ class _SwpCalculatorState extends State<SwpCalculator> {
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
+          // HEADLINE
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16.0, top: 8.0),
+            child: Text(
+              'Systematic Withdrawal Plan Calculator',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
           // Input Card
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
@@ -745,6 +775,7 @@ class _SwpCalculatorState extends State<SwpCalculator> {
                             prefix: 'PKR',
                             suffix: '',
                             controller: _amountController,
+                            isCurrency: true,
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -754,6 +785,7 @@ class _SwpCalculatorState extends State<SwpCalculator> {
                             prefix: 'PKR',
                             suffix: '',
                             controller: _withdrawalController,
+                            isCurrency: true,
                           ),
                         ),
                       ],
@@ -902,12 +934,12 @@ class _FireCalculatorState extends State<FireCalculator> {
   final TextEditingController _currentAgeController = TextEditingController(text: '30');
   final TextEditingController _retirementAgeController = TextEditingController(text: '50');
   final TextEditingController _lifeExpectancyController = TextEditingController(text: '85');
-  final TextEditingController _initialInvController = TextEditingController(text: '1000000');
-  final TextEditingController _monthlyInvController = TextEditingController(text: '50000');
+  final TextEditingController _initialInvController = TextEditingController(text: '10,00,000');
+  final TextEditingController _monthlyInvController = TextEditingController(text: '50,000');
   final TextEditingController _stepUpController = TextEditingController(text: '10');
   final TextEditingController _preRetireReturnController = TextEditingController(text: '15');
   final TextEditingController _postRetireReturnController = TextEditingController(text: '10');
-  final TextEditingController _monthlyExpController = TextEditingController(text: '100000');
+  final TextEditingController _monthlyExpController = TextEditingController(text: '1,00,000');
   final TextEditingController _inflationController = TextEditingController(text: '8');
 
   double _corpusAtRetirement = 0;
@@ -939,16 +971,16 @@ class _FireCalculatorState extends State<FireCalculator> {
   }
 
   void _calculate() {
-    final int currentAge = int.tryParse(_currentAgeController.text) ?? 0;
-    final int retirementAge = int.tryParse(_retirementAgeController.text) ?? 0;
-    final int lifeExpectancy = int.tryParse(_lifeExpectancyController.text) ?? 0;
-    final double initialInvestment = double.tryParse(_initialInvController.text) ?? 0;
-    final double monthlyInvestment = double.tryParse(_monthlyInvController.text) ?? 0;
-    final double stepUp = double.tryParse(_stepUpController.text) ?? 0;
-    final double preRetireReturn = double.tryParse(_preRetireReturnController.text) ?? 0;
-    final double postRetireReturn = double.tryParse(_postRetireReturnController.text) ?? 0;
-    final double currentMonthlyExpenses = double.tryParse(_monthlyExpController.text) ?? 0;
-    final double inflation = double.tryParse(_inflationController.text) ?? 0;
+    final int currentAge = int.tryParse(_currentAgeController.text.replaceAll(',', '')) ?? 0;
+    final int retirementAge = int.tryParse(_retirementAgeController.text.replaceAll(',', '')) ?? 0;
+    final int lifeExpectancy = int.tryParse(_lifeExpectancyController.text.replaceAll(',', '')) ?? 0;
+    final double initialInvestment = double.tryParse(_initialInvController.text.replaceAll(',', '')) ?? 0;
+    final double monthlyInvestment = double.tryParse(_monthlyInvController.text.replaceAll(',', '')) ?? 0;
+    final double stepUp = double.tryParse(_stepUpController.text.replaceAll(',', '')) ?? 0;
+    final double preRetireReturn = double.tryParse(_preRetireReturnController.text.replaceAll(',', '')) ?? 0;
+    final double postRetireReturn = double.tryParse(_postRetireReturnController.text.replaceAll(',', '')) ?? 0;
+    final double currentMonthlyExpenses = double.tryParse(_monthlyExpController.text.replaceAll(',', '')) ?? 0;
+    final double inflation = double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0;
 
     if (currentAge > 0 && retirementAge > currentAge && lifeExpectancy > retirementAge) {
       int preRetireMonths = (retirementAge - currentAge) * 12;
@@ -1011,6 +1043,7 @@ class _FireCalculatorState extends State<FireCalculator> {
     required String prefix,
     required String suffix,
     required TextEditingController controller,
+    bool isCurrency = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1026,6 +1059,7 @@ class _FireCalculatorState extends State<FireCalculator> {
           child: TextField(
             controller: controller,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: isCurrency ? [IndianNumberFormatter()] : [],
             style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             onChanged: (val) => _calculate(),
             decoration: InputDecoration(
@@ -1047,8 +1081,8 @@ class _FireCalculatorState extends State<FireCalculator> {
     String statusMessage = '';
     Color statusColor = Colors.greenAccent;
 
-    int lifeExpectancy = int.tryParse(_lifeExpectancyController.text) ?? 0;
-    int retirementAge = int.tryParse(_retirementAgeController.text) ?? 0;
+    int lifeExpectancy = int.tryParse(_lifeExpectancyController.text.replaceAll(',', '')) ?? 0;
+    int retirementAge = int.tryParse(_retirementAgeController.text.replaceAll(',', '')) ?? 0;
 
     if (_fireAchieved) {
       statusMessage = 'FIRE Achieved! Your wealth survived until age $lifeExpectancy.';
@@ -1063,132 +1097,152 @@ class _FireCalculatorState extends State<FireCalculator> {
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildField(
-                              label: 'Current Age',
-                              prefix: '',
-                              suffix: 'Yrs',
-                              controller: _currentAgeController,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildField(
-                              label: 'Retirement Age',
-                              prefix: '',
-                              suffix: 'Yrs',
-                              controller: _retirementAgeController,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildField(
-                              label: 'Life Expectancy',
-                              prefix: '',
-                              suffix: 'Yrs',
-                              controller: _lifeExpectancyController,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildField(
-                              label: 'Initial Investment',
-                              prefix: 'PKR',
-                              suffix: '',
-                              controller: _initialInvController,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildField(
-                              label: 'Monthly Investment',
-                              prefix: 'PKR',
-                              suffix: '',
-                              controller: _monthlyInvController,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildField(
-                              label: 'Annual Step-up',
-                              prefix: '',
-                              suffix: '%',
-                              controller: _stepUpController,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildField(
-                              label: 'Return (Pre-Retire)',
-                              prefix: '',
-                              suffix: '%',
-                              controller: _preRetireReturnController,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildField(
-                              label: 'Return (Post-Retire)',
-                              prefix: '',
-                              suffix: '%',
-                              controller: _postRetireReturnController,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildField(
-                              label: 'Current Monthly Exp.',
-                              prefix: 'PKR',
-                              suffix: '',
-                              controller: _monthlyExpController,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildField(
-                              label: 'Inflation P.A.',
-                              prefix: '',
-                              suffix: '%',
-                              controller: _inflationController,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+            child: Column(
+              children: [
+                // HEADLINE
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 16.0, top: 8.0),
+                  child: Text(
+                    'Financial Independence and Retire Early',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-              ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildField(
+                                  label: 'Current Age',
+                                  prefix: '',
+                                  suffix: 'Yrs',
+                                  controller: _currentAgeController,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildField(
+                                  label: 'Retirement Age',
+                                  prefix: '',
+                                  suffix: 'Yrs',
+                                  controller: _retirementAgeController,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildField(
+                                  label: 'Life Expectancy',
+                                  prefix: '',
+                                  suffix: 'Yrs',
+                                  controller: _lifeExpectancyController,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildField(
+                                  label: 'Initial Investment',
+                                  prefix: 'PKR',
+                                  suffix: '',
+                                  controller: _initialInvController,
+                                  isCurrency: true,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildField(
+                                  label: 'Monthly Investment',
+                                  prefix: 'PKR',
+                                  suffix: '',
+                                  controller: _monthlyInvController,
+                                  isCurrency: true,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildField(
+                                  label: 'Annual Step-up',
+                                  prefix: '',
+                                  suffix: '%',
+                                  controller: _stepUpController,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildField(
+                                  label: 'Return (Pre-Retire)',
+                                  prefix: '',
+                                  suffix: '%',
+                                  controller: _preRetireReturnController,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildField(
+                                  label: 'Return (Post-Retire)',
+                                  prefix: '',
+                                  suffix: '%',
+                                  controller: _postRetireReturnController,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildField(
+                                  label: 'Current Monthly Exp.',
+                                  prefix: 'PKR',
+                                  suffix: '',
+                                  controller: _monthlyExpController,
+                                  isCurrency: true,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildField(
+                                  label: 'Inflation P.A.',
+                                  prefix: '',
+                                  suffix: '%',
+                                  controller: _inflationController,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1282,6 +1336,44 @@ class _FireCalculatorState extends State<FireCalculator> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// CUSTOM FORMATTER FOR INDIAN NUMBER FORMAT (Lakhs & Crores)
+// -------------------------------------------------------------
+class IndianNumberFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) return newValue;
+
+    // Remove any character that is not a digit or a decimal point
+    String cleanText = newValue.text.replaceAll(RegExp(r'[^0-9.]'), '');
+    
+    // Prevent multiple decimal points
+    if (cleanText.split('.').length > 2) {
+      cleanText = oldValue.text.replaceAll(',', ''); 
+    }
+
+    if (cleanText.isEmpty) return newValue.copyWith(text: '');
+
+    List<String> parts = cleanText.split('.');
+    String wholeNumber = parts[0];
+    String decimalPart = parts.length > 1 ? '.${parts[1]}' : '';
+
+    if (wholeNumber.isEmpty) {
+      return newValue.copyWith(text: cleanText);
+    }
+
+    // Apply the Indian decimal pattern
+    final formatter = NumberFormat.decimalPattern('en_IN');
+    String formatted = formatter.format(int.parse(wholeNumber));
+    String finalString = formatted + decimalPart;
+
+    return TextEditingValue(
+      text: finalString,
+      selection: TextSelection.collapsed(offset: finalString.length),
     );
   }
 }
