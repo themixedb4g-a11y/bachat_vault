@@ -2,8 +2,9 @@ name: Bachat Vault Master Sync
 
 on:
   schedule:
-    # Runs at 8 AM, 6 PM, 8 PM, and 10 PM PKT (UTC+5)
-    - cron: '0 3,13,15,17 * * *' 
+    # Runs at 7:14 AM, 5:14 PM, 7:14 PM, and 9:14 PM PKT (UTC+5)
+    # Using minute 14 to bypass GitHub Actions top-of-the-hour server limits
+    - cron: '14 2,12,14,16 * * *' 
   workflow_dispatch: # Allows manual trigger
 
 jobs:
