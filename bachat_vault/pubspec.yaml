@@ -30,7 +30,7 @@ flutter:
 
   assets:
     - .env
-    - assets/
+    - assets/app_logo.png
     - assets/logos/
 
 # --- APP ICON CONFIGURATION ---

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-
-// This import connects the splash screen to your main layout!
-import 'package:bachat_vault/screens/main_layout.dart'; 
+import 'package:bachat_vault/screens/main_layout.dart'; // Check this import path if needed!
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -42,7 +40,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     Timer(const Duration(seconds: 3), () {
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          // FIXED: Correct capitalization and removed 'const'
           pageBuilder: (_, __, ___) => MainLayout(), 
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(opacity: animation, child: child);
@@ -79,37 +76,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Your Logo
+                // Your Full Logo (Icon + Text)
                 Image.asset(
                   'assets/app_logo.png',
-                  width: 140,
-                  height: 140,
+                  width: 280, // Increased width so the built-in text is easy to read
                   errorBuilder: (context, error, stackTrace) => const Icon(
                     Icons.account_balance_wallet,
                     color: Colors.tealAccent,
                     size: 100,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                // App Name
-                const Text(
-                  'Bachat Vault',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Tagline
-                Text(
-                  'Smart Investing. Simplified.',
-                  style: TextStyle(
-                    color: Colors.tealAccent.withOpacity(0.8),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.5,
                   ),
                 ),
               ],
@@ -119,4 +93,4 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       ),
     );
   }
-}
+} // <-- This is the curly brace that went missing!

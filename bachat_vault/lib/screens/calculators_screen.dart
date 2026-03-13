@@ -424,6 +424,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
             child: DropdownButton<String>(
               isExpanded: true,
               dropdownColor: const Color(0xFF203A43),
+              menuMaxHeight: 350,
               icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
               style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
               value: value,

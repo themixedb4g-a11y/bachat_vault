@@ -185,23 +185,29 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   Widget _buildTop5Card(String title, List<String> categories, String sortKey) {
     final topFunds = _getTop5Funds(categories, sortKey);
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white.withOpacity(0.1)),
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.tealAccent.withOpacity(0.1), Colors.transparent]),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(color: Colors.tealAccent, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-          const SizedBox(height: 16),
-          if (topFunds.isEmpty)
-            const Expanded(child: Center(child: Text("No funds available.", style: TextStyle(color: Colors.white54))))
-          else
-            Expanded(
-              child: ListView.separated(
+    return Align(
+      alignment: Alignment.topCenter, // Stops the card from stretching to the bottom
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05), 
+          borderRadius: BorderRadius.circular(24), 
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.tealAccent.withOpacity(0.1), Colors.transparent]),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, // Hugs the content tightly
+          children: [
+            Text(title, style: const TextStyle(color: Colors.tealAccent, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+            const SizedBox(height: 16),
+            if (topFunds.isEmpty)
+              const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: Text("No funds available.", style: TextStyle(color: Colors.white54))))
+            else
+              // Removed Expanded() and added shrinkWrap!
+              ListView.separated(
+                shrinkWrap: true, // Tells the list to only take up exact space needed
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: topFunds.length,
                 separatorBuilder: (context, index) => const Divider(color: Colors.white12, height: 24),
@@ -237,8 +243,8 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   );
                 },
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -325,7 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                 const SizedBox(width: 12),
                 _buildMarketCard('KMI 30', 'Islamic Index', _getDynamicReturn('KMI30', dbKey), Icons.mosque_outlined, Colors.green),
                 const SizedBox(width: 12),
-                _buildMarketCard('Gold', 'Per Ounce', _getDynamicReturn('GOLD_24K', dbKey), Icons.circle, Colors.amberAccent),
+                _buildMarketCard('Gold', 'Per Tola', _getDynamicReturn('GOLD_24K', dbKey), Icons.circle, Colors.amberAccent),
               ],
             ),
           ),
@@ -528,7 +534,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       case '20Y': return 'return_20y'; 
       case 'MTD': return 'return_30d'; 
       case 'YTD': return 'return_1y'; 
-      case '25Y': return 'return_20y'; 
       default: return 'return_1d';
     }
   }
@@ -565,6 +570,26 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
         extendBodyBehindAppBar: true,
         appBar: AppBar(
           title: const Text('Full Performance', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white)), backgroundColor: Colors.transparent, elevation: 0, leading: const BackButton(color: Colors.white),
+          // --- NEW COMPARE BUTTON ---
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: TextButton.icon(
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => CompareFundsScreen(
+                    allFunds: widget.allFunds,
+                    investmentAmount: _investmentAmount,
+                    benchmarkStats: widget.benchmarkStats,
+                    initialPeriod: _selectedPeriod,
+                  )));
+                },
+                icon: const Icon(Icons.compare_arrows_rounded, color: Colors.tealAccent),
+                label: const Text('Compare Funds', style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                style: TextButton.styleFrom(backgroundColor: Colors.tealAccent.withOpacity(0.1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+              ),
+            )
+          ],
+          // --------------------------
           flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.black.withOpacity(0.2)))),
         ),
         body: Container(
@@ -610,7 +635,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                                   height: 48, padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                                   child: DropdownButtonHideUnderline(
                                     child: DropdownButton<String>(
-                                      value: _selectedAmc, isExpanded: true, dropdownColor: const Color(0xFF203A43), icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500), isDense: true,
+                                      value: _selectedAmc, isExpanded: true, dropdownColor: const Color(0xFF203A43), menuMaxHeight: 350, icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500), isDense: true,
                                       items: _amcs.map((amc) => DropdownMenuItem<String>(value: amc, child: Text(amc, maxLines: 2, overflow: TextOverflow.visible, style: const TextStyle(fontSize: 13)))).toList(),
                                       onChanged: (val) { if (val != null) setState(() { _selectedAmc = val; }); },
                                     ),
@@ -627,7 +652,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                         height: 48, padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
-                            value: _selectedCategory, isExpanded: true, dropdownColor: const Color(0xFF203A43), icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500), isDense: true,
+                            value: _selectedCategory, isExpanded: true, dropdownColor: const Color(0xFF203A43), menuMaxHeight: 350, icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500), isDense: true,
                             items: _categories.map((cat) => DropdownMenuItem<String>(value: cat, child: Text(cat, maxLines: 2, overflow: TextOverflow.visible))).toList(),
                             onChanged: (val) { if (val != null) setState(() { _selectedCategory = val; }); },
                           ),
@@ -639,7 +664,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                         scrollDirection: Axis.horizontal,
                         physics: const BouncingScrollPhysics(),
                         child: Row(
-                          children: ['1D', 'MTD', '30D', 'YTD', '1Y', '3Y', '5Y', '10Y', '15Y', '20Y', '25Y']
+                          children: ['1D', 'MTD', '30D', 'YTD', '1Y', '3Y', '5Y', '10Y', '15Y', '20Y']
                               .asMap()
                               .entries
                               .map((entry) {
@@ -787,11 +812,18 @@ class FundDetailsScreen extends StatelessWidget {
         padding: const EdgeInsets.only(top: 8.0),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Annualized:', style: TextStyle(color: Colors.white54, fontSize: 11)),
-            Text(
-              'Fund: $cagrStr | $indexName: $indexCagr | Gold: $goldCagr | Infl: $inflCagr', 
-              style: TextStyle(color: Colors.tealAccent.withOpacity(0.8), fontSize: 10, fontWeight: FontWeight.w600)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('Fund: $cagrStr  •  $indexName: $indexCagr', 
+                  style: TextStyle(color: Colors.tealAccent.withOpacity(0.9), fontSize: 10, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text('Gold: $goldCagr  •  Inflation: $inflCagr', 
+                  style: TextStyle(color: Colors.tealAccent.withOpacity(0.7), fontSize: 10, fontWeight: FontWeight.w500)),
+              ],
             ),
           ],
         ),
@@ -834,7 +866,11 @@ class FundDetailsScreen extends StatelessWidget {
     final terYtd = fund['ter_ytd'] != null ? '${fund['ter_ytd']}%' : 'N/A';
 
     final String safeAmcName = amcName.toString().toLowerCase().replaceAll(' ', '_');
-    final String logoPath = 'assets/logos/$safeAmcName.png';
+    final String safeTicker = fund['ticker']?.toString().toLowerCase() ?? '';
+    final bool isCrypto = category.toString().toLowerCase() == 'crypto';
+    
+    // If it's crypto, use the ticker (btc.png). Otherwise, use the AMC name.
+    final String logoPath = isCrypto ? 'assets/logos/$safeTicker.png' : 'assets/logos/$safeAmcName.png';
 
     return Theme(
       data: Theme.of(context).copyWith(textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme)),
@@ -917,6 +953,289 @@ class FundDetailsScreen extends StatelessWidget {
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+// ============================================================================
+// PHASE 5: COMPARE FUNDS SCREEN (POLISHED UI)
+// ============================================================================
+class CompareFundsScreen extends StatefulWidget {
+  final List<Map<String, dynamic>> allFunds;
+  final double investmentAmount;
+  final Map<String, dynamic> benchmarkStats;
+  final String initialPeriod;
+
+  const CompareFundsScreen({super.key, required this.allFunds, required this.investmentAmount, required this.benchmarkStats, required this.initialPeriod});
+
+  @override
+  State<CompareFundsScreen> createState() => _CompareFundsScreenState();
+}
+
+class _CompareFundsScreenState extends State<CompareFundsScreen> {
+  late List<String> _categories;
+  String? _selectedCategory;
+  List<String?> _selectedFundTickers = [null, null]; // Starts with 2 dropdowns
+  late String _selectedPeriod;
+
+  final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
+
+  @override
+  void initState() {
+    super.initState();
+    // FIX 2: Force the default selected period to 1Y instead of 1D
+    _selectedPeriod = '1Y';
+    
+    // Extract unique categories (ignoring 'All')
+    final Set<String> catSet = {};
+    for (var f in widget.allFunds) {
+      final cat = f['category'];
+      if (cat != null && cat.toString().isNotEmpty) catSet.add(cat.toString().trim());
+    }
+    _categories = catSet.toList()..sort();
+    if (_categories.isNotEmpty) {
+      _selectedCategory = _categories.contains('Equity') ? 'Equity' : _categories.first;
+    }
+  }
+
+  List<Map<String, dynamic>> _getFundsInCategory() {
+    if (_selectedCategory == null) return [];
+    return widget.allFunds.where((f) => f['category']?.toString().trim() == _selectedCategory).toList();
+  }
+
+  String _getSortKey(String period) {
+    switch (period) {
+      case '1D': return 'return_1d'; case '30D': return 'return_30d'; case '1Y': return 'return_1y';
+      case '3Y': return 'return_3y'; case '5Y': return 'return_5y'; case '10Y': return 'return_10y';
+      case '15Y': return 'return_15y'; case '20Y': return 'return_20y'; case 'MTD': return 'return_30d'; 
+      case 'YTD': return 'return_1y'; case '25Y': return 'return_20y'; default: return 'return_1y';
+    }
+  }
+
+  Widget _buildPeriodFilterBtn(String label) {
+    final isSelected = _selectedPeriod == label;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedPeriod = label),
+      child: Container(
+        // Removed the margin here so the Wrap widget can center them perfectly
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(color: isSelected ? Colors.tealAccent.withOpacity(0.2) : Colors.transparent, borderRadius: BorderRadius.circular(8), border: Border.all(color: isSelected ? Colors.tealAccent : Colors.white.withOpacity(0.2), width: 1)),
+        child: Text(label, style: TextStyle(color: isSelected ? Colors.tealAccent : Colors.white70, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500, fontSize: 11)),
+      ),
+    );
+  }
+
+  Widget _buildMiniReturnPill(String label, String dbKey, Map<String, dynamic> fund) {
+    final rawValue = fund[dbKey];
+    if (rawValue == null) return const SizedBox.shrink();
+
+    final percent = ((rawValue as num).toDouble() - 1.0) * 100.0;
+    Color statColor = percent > 0 ? Colors.greenAccent : percent < 0 ? Colors.redAccent.shade100 : Colors.white70;
+    String sign = percent > 0 ? '+' : '';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white.withOpacity(0.1))),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$label: ', style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600)),
+          Text('$sign${percent.toStringAsFixed(2)}%', style: TextStyle(color: statColor, fontSize: 10, fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComparisonCard(Map<String, dynamic> fund) {
+    final fundName = fund['fund_name'] ?? 'Unknown Fund';
+    final amcName = fund['amc_name'] ?? '';
+    final isShariah = (fund['is_shariah'] == 1 || fund['is_shariah'] == '1' || fund['is_shariah'] == true);
+    
+    final sortKey = _getSortKey(_selectedPeriod);
+    final rawValue = fund[sortKey];
+    
+    double profitValue = 0.0;
+    double percent = 0.0;
+    if (rawValue != null) {
+      final returnFactor = (rawValue as num).toDouble();
+      percent = (returnFactor - 1.0) * 100.0;
+      profitValue = widget.investmentAmount * (returnFactor - 1.0);
+    }
+
+    String profitString = _currencyFormat.format(profitValue.abs());
+    String formattedValueDisplay = rawValue == null ? 'N/A' : profitValue > 0 ? '+PKR $profitString' : profitValue < 0 ? '-PKR $profitString' : 'PKR 0';
+    String percentageString = rawValue == null ? '' : '(${percent > 0 ? '+' : ''}${percent.toStringAsFixed(2)}%)';
+    Color statColor = rawValue == null ? Colors.white54 : percent > 0 ? Colors.greenAccent : percent < 0 ? Colors.redAccent.shade100 : Colors.white70;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.15))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(amcName.toString().toUpperCase(), style: const TextStyle(color: Colors.tealAccent, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+          const SizedBox(height: 4),
+          Text('$fundName${isShariah ? " 🕌" : ""}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, height: 1.2)),
+          const SizedBox(height: 12),
+          
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('$_selectedPeriod Growth:', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+              Row(
+                children: [
+                  Text(formattedValueDisplay, style: TextStyle(color: statColor, fontSize: 16, fontWeight: FontWeight.w800)),
+                  const SizedBox(width: 6),
+                  Text(percentageString, style: TextStyle(color: statColor.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w700)),
+                ],
+              )
+            ],
+          ),
+          
+          const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(color: Colors.white12, height: 1)),
+          
+          // FIX 3: Centered Historical Returns Section
+          const Center(
+            child: Text('Historical Returns:', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.center, // Centers the pills
+              spacing: 8, runSpacing: 8,
+              children: [
+                _buildMiniReturnPill('30D', 'return_30d', fund),
+                _buildMiniReturnPill('1Y', 'return_1y', fund),
+                _buildMiniReturnPill('3Y', 'return_3y', fund),
+                _buildMiniReturnPill('5Y', 'return_5y', fund),
+                _buildMiniReturnPill('10Y', 'return_10y', fund),
+                _buildMiniReturnPill('15Y', 'return_15y', fund),
+                _buildMiniReturnPill('20Y', 'return_20y', fund),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final availableFunds = _getFundsInCategory();
+
+    return Theme(
+      data: Theme.of(context).copyWith(textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme)),
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          title: const Text('Compare Funds', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+          backgroundColor: Colors.transparent, elevation: 0, leading: const BackButton(color: Colors.white),
+          flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.black.withOpacity(0.2)))),
+        ),
+        body: Container(
+          width: double.infinity, height: double.infinity,
+          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF000000)])),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Select Category', style: TextStyle(color: Colors.tealAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 48, padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.1))),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedCategory, isExpanded: true, dropdownColor: const Color(0xFF203A43), menuMaxHeight: 350, icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                        items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() {
+                              _selectedCategory = val;
+                              _selectedFundTickers = [null, null];
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  const Text('Select Funds to Compare', style: TextStyle(color: Colors.tealAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  ...List.generate(_selectedFundTickers.length, (index) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      height: 52, padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.1))),
+                      child: Row(
+                        children: [
+                          Text('Fund ${index + 1}: ', style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.bold)),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedFundTickers[index], isExpanded: true, dropdownColor: const Color(0xFF203A43), menuMaxHeight: 350, icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
+                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                                hint: const Text('Choose a fund...', style: TextStyle(color: Colors.white38)),
+                                items: availableFunds.map((f) => DropdownMenuItem(value: f['ticker'] as String, child: Text(f['fund_name'] as String, overflow: TextOverflow.ellipsis))).toList(),
+                                onChanged: (val) { setState(() { _selectedFundTickers[index] = val; }); },
+                              ),
+                            ),
+                          ),
+                          if (index >= 2) 
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.redAccent, size: 20),
+                              onPressed: () { setState(() { _selectedFundTickers.removeAt(index); }); },
+                            )
+                        ],
+                      ),
+                    );
+                  }),
+
+                  if (_selectedFundTickers.length < 4)
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () { setState(() { _selectedFundTickers.add(null); }); },
+                        icon: const Icon(Icons.add_circle_outline, color: Colors.tealAccent),
+                        label: const Text('Add Another Fund', style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(color: Colors.white24, height: 1)),
+
+                  // FIX 1: Centered Period Filter Buttons using Wrap
+                  SizedBox(
+                    width: double.infinity,
+                    child: Wrap(
+                      alignment: WrapAlignment.center, // Perfect centering
+                      spacing: 8, // Horizontal gap
+                      runSpacing: 12, // Vertical gap if it drops to a second line
+                      children: ['30D', '1Y', '3Y', '5Y', '10Y', '15Y', '20Y'].map((p) => _buildPeriodFilterBtn(p)).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  ..._selectedFundTickers.map((ticker) {
+                    if (ticker == null) return const SizedBox.shrink();
+                    final fundData = widget.allFunds.firstWhere((f) => f['ticker'] == ticker, orElse: () => {});
+                    if (fundData.isEmpty) return const SizedBox.shrink();
+                    
+                    return _buildComparisonCard(fundData);
+                  }),
+                  
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class AnimatedEmoji extends StatefulWidget { final String emoji; const AnimatedEmoji({super.key, required this.emoji}); @override State<AnimatedEmoji> createState() => _AnimatedEmojiState(); }
 class _AnimatedEmojiState extends State<AnimatedEmoji> with SingleTickerProviderStateMixin { late AnimationController _controller; @override void initState() { super.initState(); _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true); } @override void dispose() { _controller.dispose(); super.dispose(); } @override Widget build(BuildContext context) { return SlideTransition(position: Tween<Offset>(begin: const Offset(0, -0.15), end: const Offset(0, 0.15)).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)), child: Text(widget.emoji, style: const TextStyle(fontSize: 22))); } }
