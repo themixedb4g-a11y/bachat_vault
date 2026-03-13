@@ -4,7 +4,7 @@ on:
   schedule:
     # Runs at 7:14 AM, 5:14 PM, 7:14 PM, and 9:14 PM PKT (UTC+5)
     # Using minute 14 to bypass GitHub Actions top-of-the-hour server limits
-    - cron: '14 2,12,14,16 * * *' 
+    - cron: '14 9,11,13,23 * * *' 
   workflow_dispatch: # Allows manual trigger
 
 jobs:
