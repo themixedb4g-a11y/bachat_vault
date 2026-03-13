@@ -1,10 +1,11 @@
 import 'dart:ui';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:url_launcher/url_launcher.dart'; // Added for Social Links!
+import 'package:url_launcher/url_launcher.dart'; 
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -19,6 +20,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   bool _isLoading = true;
   String? _errorMessage;
   List<Map<String, dynamic>> _allFunds = [];
+  Map<String, dynamic> _benchmarkStats = {}; 
   
   double _investmentAmount = 100000.0;
   final TextEditingController _investmentController = TextEditingController(text: '1,00,000');
@@ -43,7 +45,6 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     super.dispose();
   }
 
-  // --- NEW URL LAUNCHER FUNCTION ---
   Future<void> _launchURL(String urlString) async {
     final Uri url = Uri.parse(urlString);
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
@@ -95,6 +96,11 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     try {
       final masterResponse = await supabase.from('master_funds').select();
       final statsResponse = await supabase.from('performance_stats').select('ticker, return_1d, return_30d, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y, ter_mtd, ter_ytd, last_validity_date');
+
+      _benchmarkStats['KSE100'] = statsResponse.firstWhere((s) => s['ticker'] == 'KSE100', orElse: () => <String, dynamic>{});
+      _benchmarkStats['KMI30'] = statsResponse.firstWhere((s) => s['ticker'] == 'KMI30', orElse: () => <String, dynamic>{});
+      _benchmarkStats['GOLD_24K'] = statsResponse.firstWhere((s) => s['ticker'] == 'GOLD_24K', orElse: () => <String, dynamic>{});
+      _benchmarkStats['CPI_PK'] = statsResponse.firstWhere((s) => s['ticker'] == 'CPI_PK', orElse: () => <String, dynamic>{});
 
       final List<Map<String, dynamic>> combined = [];
 
@@ -154,7 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     filtered.sort((a, b) {
       final valA = (a[sortKey] as num).toDouble();
       final valB = (b[sortKey] as num).toDouble();
-      return valB.compareTo(valA); 
+      return valB.compareTo(valA);
     });
 
     return filtered.take(5).toList();
@@ -213,7 +219,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   Color profitColor = profitValue >= 0 ? Colors.greenAccent : Colors.redAccent.shade100;
 
                   return InkWell(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FundDetailsScreen(fund: fund, investmentAmount: _investmentAmount))),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FundDetailsScreen(fund: fund, investmentAmount: _investmentAmount, benchmarkStats: _benchmarkStats))),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -237,6 +243,98 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     );
   }
 
+  // ============================================================================
+  // MARKET OVERVIEW SECTION (Dynamic Data & Centered)
+  // ============================================================================
+  
+  double _getDynamicReturn(String ticker, String dbKey) {
+    final stat = _benchmarkStats[ticker];
+    if (stat == null || stat[dbKey] == null) return 0.0;
+    return ((stat[dbKey] as num).toDouble() - 1.0) * 100.0;
+  }
+
+  Widget _buildMarketCard(String title, String subtitle, double percentChange, IconData icon, Color iconColor) {
+    bool isPositive = percentChange >= 0;
+    Color statColor = isPositive ? Colors.greenAccent : Colors.redAccent.shade100;
+    String sign = isPositive ? '+' : '';
+
+    return Container(
+      width: 140,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Icon(icon, color: iconColor, size: 28),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$sign${percentChange.toStringAsFixed(2)}%',
+                  style: TextStyle(color: statColor, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w500)),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMarketOverviewSection(String periodLabel, String dbKey) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Text(
+            'Market Benchmarks ($periodLabel)', 
+            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5)
+          ),
+        ),
+        const SizedBox(height: 16),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Container(
+            constraints: BoxConstraints(minWidth: MediaQuery.of(context).size.width),
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildMarketCard('KSE 100', 'PSX Index', _getDynamicReturn('KSE100', dbKey), Icons.show_chart, Colors.blueAccent),
+                const SizedBox(width: 12),
+                _buildMarketCard('KMI 30', 'Islamic Index', _getDynamicReturn('KMI30', dbKey), Icons.mosque_outlined, Colors.green),
+                const SizedBox(width: 12),
+                _buildMarketCard('Gold', 'Per Ounce', _getDynamicReturn('GOLD_24K', dbKey), Icons.circle, Colors.amberAccent),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  // ============================================================================
+
   Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap) {
     return ListTile(
       leading: Icon(icon, color: Colors.tealAccent, size: 22),
@@ -254,7 +352,6 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
       data: Theme.of(context).copyWith(textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme)),
       child: Scaffold(
         extendBodyBehindAppBar: true,
-        // --- PREMIUM SIDE MENU (DRAWER) WITH LIVE SOCIAL LINKS ---
         drawer: Drawer(
           backgroundColor: const Color(0xFF0F172A),
           child: ListView(
@@ -276,7 +373,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   ],
                 ),
               ),
-              _buildDrawerItem(Icons.menu_book_rounded, 'Investment Guide', () { /* We will add this screen later */ }),
+              _buildDrawerItem(Icons.menu_book_rounded, 'Investment Guide', () { }),
               const Divider(color: Colors.white12),
               Padding(padding: const EdgeInsets.only(left: 16, top: 16, bottom: 8), child: Text('COMMUNITIES', style: TextStyle(color: Colors.tealAccent.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2))),
               _buildDrawerItem(Icons.facebook_rounded, 'Facebook Page', () => _launchURL('https://www.facebook.com/MFInvestment')),
@@ -286,8 +383,8 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
               _buildDrawerItem(Icons.camera_alt_rounded, 'Instagram', () => _launchURL('https://www.instagram.com/mfi_pakistan/')),
               _buildDrawerItem(Icons.smart_display_rounded, 'YouTube Channel', () => _launchURL('https://www.youtube.com/@the_mixedb4g')),
               const Divider(color: Colors.white12),
-              _buildDrawerItem(Icons.settings_rounded, 'App Settings', () { /* We will add this screen later */ }),
-              _buildDrawerItem(Icons.gavel_rounded, 'Terms & Conditions', () { /* We will add this screen later */ }),
+              _buildDrawerItem(Icons.settings_rounded, 'App Settings', () { }),
+              _buildDrawerItem(Icons.gavel_rounded, 'Terms & Conditions', () { }),
             ],
           ),
         ),
@@ -308,24 +405,29 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                     : SingleChildScrollView(
                         physics: const BouncingScrollPhysics(),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const SizedBox(height: 20),
-                            const Text('Your Investment Value', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500)),
+                            const Center(child: Text('Your Investment Value', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500))),
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
-                              child: IntrinsicWidth(
-                                child: TextField(
-                                  controller: _investmentController, keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: [IndianNumberFormatter()], textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.w800), decoration: const InputDecoration(prefixText: 'PKR ', prefixStyle: TextStyle(color: Colors.tealAccent, fontSize: 24, fontWeight: FontWeight.w700), border: InputBorder.none),
-                                  onChanged: (val) { setState(() { _investmentAmount = double.tryParse(val.replaceAll(',', '')) ?? 0.0; }); },
+                              child: Center(
+                                child: IntrinsicWidth(
+                                  child: TextField(
+                                    controller: _investmentController, keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: [IndianNumberFormatter()], textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.w800), decoration: const InputDecoration(prefixText: 'PKR ', prefixStyle: TextStyle(color: Colors.tealAccent, fontSize: 24, fontWeight: FontWeight.w700), border: InputBorder.none),
+                                    onChanged: (val) { setState(() { _investmentAmount = double.tryParse(val.replaceAll(',', '')) ?? 0.0; }); },
+                                  ),
                                 ),
                               ),
                             ),
                             const SizedBox(height: 8),
+                            
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [_buildDashFilterBtn('30D'), const SizedBox(width: 12), _buildDashFilterBtn('1Y'), const SizedBox(width: 12), _buildDashFilterBtn('3Y')],
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 24),
+                            
                             SizedBox(
                               height: 440,
                               child: PageView(
@@ -339,10 +441,15 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                               ),
                             ),
                             const SizedBox(height: 24),
+
+                            // PERFECTLY UPDATED FUNCTION CALL:
+                            _buildMarketOverviewSection(_selectedDashboardPeriod, dbSortKey),
+                            const SizedBox(height: 24),
+
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 24.0),
                               child: InkWell(
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FullPerformanceScreen(allFunds: _allFunds, initialInvestment: _investmentAmount))),
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FullPerformanceScreen(allFunds: _allFunds, initialInvestment: _investmentAmount, benchmarkStats: _benchmarkStats))),
                                 borderRadius: BorderRadius.circular(16),
                                 child: Container(
                                   width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 16),
@@ -369,8 +476,9 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
 class FullPerformanceScreen extends StatefulWidget {
   final List<Map<String, dynamic>> allFunds;
   final double initialInvestment;
+  final Map<String, dynamic> benchmarkStats;
 
-  const FullPerformanceScreen({super.key, required this.allFunds, required this.initialInvestment});
+  const FullPerformanceScreen({super.key, required this.allFunds, required this.initialInvestment, required this.benchmarkStats});
 
   @override
   State<FullPerformanceScreen> createState() => _FullPerformanceScreenState();
@@ -385,7 +493,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   List<String> _amcs = ['All'];
   String _selectedCategory = 'All';
   String _selectedAmc = 'All';
-  String _selectedPeriod = '1D'; 
+  String _selectedPeriod = '1D';
 
   @override
   void initState() {
@@ -410,9 +518,18 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 
   String _getSortKey() {
     switch (_selectedPeriod) {
-      case '1D': return 'return_1d'; case '30D': return 'return_30d'; case '1Y': return 'return_1y';
-      case '3Y': return 'return_3y'; case '5Y': return 'return_5y'; case '10Y': return 'return_10y';
-      case '15Y': return 'return_15y'; case '20Y': return 'return_20y'; default: return 'return_1d';
+      case '1D': return 'return_1d'; 
+      case '30D': return 'return_30d'; 
+      case '1Y': return 'return_1y';
+      case '3Y': return 'return_3y'; 
+      case '5Y': return 'return_5y'; 
+      case '10Y': return 'return_10y';
+      case '15Y': return 'return_15y'; 
+      case '20Y': return 'return_20y'; 
+      case 'MTD': return 'return_30d'; 
+      case 'YTD': return 'return_1y'; 
+      case '25Y': return 'return_20y'; 
+      default: return 'return_1d';
     }
   }
 
@@ -427,14 +544,12 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 
   Widget _buildFilterButton(String label) {
     final isSelected = _selectedPeriod == label;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () { setState(() { _selectedPeriod = label; }); },
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 2), padding: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(color: isSelected ? Colors.tealAccent.withOpacity(0.2) : Colors.transparent, borderRadius: BorderRadius.circular(8), border: Border.all(color: isSelected ? Colors.tealAccent : Colors.white.withOpacity(0.2), width: 1)),
-          child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: isSelected ? Colors.tealAccent : Colors.white70, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500, fontSize: 11)),
-        ),
+    return GestureDetector(
+      onTap: () { setState(() { _selectedPeriod = label; }); },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(color: isSelected ? Colors.tealAccent.withOpacity(0.2) : Colors.transparent, borderRadius: BorderRadius.circular(8), border: Border.all(color: isSelected ? Colors.tealAccent : Colors.white.withOpacity(0.2), width: 1)),
+        child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: isSelected ? Colors.tealAccent : Colors.white70, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500, fontSize: 11)),
       ),
     );
   }
@@ -495,7 +610,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                                   height: 48, padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                                   child: DropdownButtonHideUnderline(
                                     child: DropdownButton<String>(
-                                      value: _selectedAmc, isExpanded: true, dropdownColor: const Color(0xFF203A43), icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500), isDense: true, 
+                                      value: _selectedAmc, isExpanded: true, dropdownColor: const Color(0xFF203A43), icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500), isDense: true,
                                       items: _amcs.map((amc) => DropdownMenuItem<String>(value: amc, child: Text(amc, maxLines: 2, overflow: TextOverflow.visible, style: const TextStyle(fontSize: 13)))).toList(),
                                       onChanged: (val) { if (val != null) setState(() { _selectedAmc = val; }); },
                                     ),
@@ -519,7 +634,23 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Row(children: [_buildFilterButton('1D'), _buildFilterButton('30D'), _buildFilterButton('1Y'), _buildFilterButton('3Y'), _buildFilterButton('5Y'), _buildFilterButton('10Y'), _buildFilterButton('15Y'), _buildFilterButton('20Y')]),
+                      
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        child: Row(
+                          children: ['1D', 'MTD', '30D', 'YTD', '1Y', '3Y', '5Y', '10Y', '15Y', '20Y', '25Y']
+                              .asMap()
+                              .entries
+                              .map((entry) {
+                            return Padding(
+                              padding: EdgeInsets.only(right: entry.key != 10 ? 8.0 : 0.0),
+                              child: _buildFilterButton(entry.value),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      
                     ],
                   ),
                 ),
@@ -551,7 +682,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                               padding: const EdgeInsets.only(bottom: 10),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(12),
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FundDetailsScreen(fund: fund, investmentAmount: _investmentAmount))),
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FundDetailsScreen(fund: fund, investmentAmount: _investmentAmount, benchmarkStats: widget.benchmarkStats))),
                                 child: Container(
                                   decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.1), width: 1)),
                                   child: ClipRRect(
@@ -589,24 +720,33 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 }
 
 // ============================================================================
-// THE NEW DEEP DIVE SCREEN (WITH DYNAMIC AMC LOGOS)
+// THE DEEP DIVE SCREEN (ADDED CAGR & BENCHMARKS)
 // ============================================================================
 
 class FundDetailsScreen extends StatelessWidget {
   final Map<String, dynamic> fund;
   final double investmentAmount;
+  final Map<String, dynamic> benchmarkStats;
 
-  const FundDetailsScreen({super.key, required this.fund, required this.investmentAmount});
+  const FundDetailsScreen({super.key, required this.fund, required this.investmentAmount, required this.benchmarkStats});
 
   bool _isPeriodValid(String? inceptionDateStr, int requiredDays) {
-    if (inceptionDateStr == null || inceptionDateStr.isEmpty) return true; 
+    if (inceptionDateStr == null || inceptionDateStr.isEmpty) return true;
     DateTime? incDate = DateTime.tryParse(inceptionDateStr);
     if (incDate == null) return true;
     final diff = DateTime.now().difference(incDate).inDays;
     return diff >= requiredDays;
   }
 
-  Widget _buildReturnRow(String label, String dbKey, int requiredDays) {
+  String _formatBenchmarkCagr(String ticker, String dbKey, int years) {
+    final stat = benchmarkStats[ticker];
+    if (stat == null || stat[dbKey] == null) return 'N/A';
+    final growth = (stat[dbKey] as num).toDouble();
+    double cagrPercent = (math.pow(growth, 1.0 / years) - 1.0) * 100;
+    return '${cagrPercent >= 0 ? '+' : ''}${cagrPercent.toStringAsFixed(2)}%';
+  }
+
+  Widget _buildReturnRow(String label, String dbKey, int requiredDays, {int? years, bool isShariah = false}) {
     final rawValue = fund[dbKey];
     final inception = fund['inception_date']?.toString();
     final NumberFormat currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
@@ -624,15 +764,51 @@ class FundDetailsScreen extends StatelessWidget {
     String percentageString = '${percent > 0 ? '+' : ''}${percent.toStringAsFixed(2)}%';
     Color statColor = percent > 0 ? Colors.greenAccent : percent < 0 ? Colors.redAccent.shade100 : Colors.white70;
 
+    Widget mainRow = Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(formattedValueDisplay, style: TextStyle(color: statColor, fontSize: 16, fontWeight: FontWeight.bold, fontFeatures: const [FontFeature.tabularFigures()])), const SizedBox(height: 2), Text(percentageString, style: TextStyle(color: statColor.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w600))]),
+      ],
+    );
+
+    if (years != null && years >= 1) {
+      double cagrPercent = (math.pow(returnFactor, 1.0 / years) - 1.0) * 100;
+      String cagrStr = '${cagrPercent > 0 ? '+' : ''}${cagrPercent.toStringAsFixed(2)}%';
+      
+      String indexTicker = isShariah ? 'KMI30' : 'KSE100';
+      String indexName = isShariah ? 'KMI30' : 'KSE100';
+      
+      String indexCagr = _formatBenchmarkCagr(indexTicker, dbKey, years);
+      String goldCagr = _formatBenchmarkCagr('GOLD_24K', dbKey, years);
+      String inflCagr = _formatBenchmarkCagr('CPI_PK', dbKey, years);
+
+      Widget cagrRow = Padding(
+        padding: const EdgeInsets.only(top: 8.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Annualized:', style: TextStyle(color: Colors.white54, fontSize: 11)),
+            Text(
+              'Fund: $cagrStr | $indexName: $indexCagr | Gold: $goldCagr | Infl: $inflCagr', 
+              style: TextStyle(color: Colors.tealAccent.withOpacity(0.8), fontSize: 10, fontWeight: FontWeight.w600)
+            ),
+          ],
+        ),
+      );
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [mainRow, cagrRow],
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(formattedValueDisplay, style: TextStyle(color: statColor, fontSize: 16, fontWeight: FontWeight.bold, fontFeatures: const [FontFeature.tabularFigures()])), const SizedBox(height: 2), Text(percentageString, style: TextStyle(color: statColor.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w600))]),
-        ],
-      ),
+      child: mainRow,
     );
   }
 
@@ -657,7 +833,6 @@ class FundDetailsScreen extends StatelessWidget {
     final terMtd = fund['ter_mtd'] != null ? '${fund['ter_mtd']}%' : 'N/A';
     final terYtd = fund['ter_ytd'] != null ? '${fund['ter_ytd']}%' : 'N/A';
 
-    // --- DYNAMIC LOGO GENERATOR ---
     final String safeAmcName = amcName.toString().toLowerCase().replaceAll(' ', '_');
     final String logoPath = 'assets/logos/$safeAmcName.png';
 
@@ -674,7 +849,6 @@ class FundDetailsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- HEADER WITH AMC LOGO ---
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -682,9 +856,9 @@ class FundDetailsScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(amcName.toString().toUpperCase(), style: const TextStyle(color: Colors.tealAccent, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.0)), 
+                            Text(amcName.toString().toUpperCase(), style: const TextStyle(color: Colors.tealAccent, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.0)),
                             const SizedBox(height: 8),
-                            Text('$fundName${isShariah ? " 🕌" : ""}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)), 
+                            Text('$fundName${isShariah ? " 🕌" : ""}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
                           ],
                         ),
                       ),
@@ -710,15 +884,24 @@ class FundDetailsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   
-                  // INFO PILLS
                   Row(children: [_buildInfoPill('Category', category.toString()), const SizedBox(width: 12), _buildInfoPill('Risk Profile', risk.toString())]), const SizedBox(height: 12),
                   Row(children: [_buildInfoPill('Inception Date', incDateStr), const SizedBox(width: 12), _buildInfoPill('TER (MTD)', terMtd), const SizedBox(width: 12), _buildInfoPill('TER (YTD)', terYtd)]), const SizedBox(height: 32),
                   
-                  // RETURNS CARD
                   const Text('Performance Breakdown', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.1))),
-                    child: Column(children: [_buildReturnRow('1 Day', 'return_1d', 1), const Divider(color: Colors.white12), _buildReturnRow('30 Days', 'return_30d', 30), const Divider(color: Colors.white12), _buildReturnRow('1 Year', 'return_1y', 365), const Divider(color: Colors.white12), _buildReturnRow('3 Years', 'return_3y', 1095), const Divider(color: Colors.white12), _buildReturnRow('5 Years', 'return_5y', 1825), const Divider(color: Colors.white12), _buildReturnRow('10 Years', 'return_10y', 3650), const Divider(color: Colors.white12), _buildReturnRow('15 Years', 'return_15y', 5475), const Divider(color: Colors.white12), _buildReturnRow('20 Years', 'return_20y', 7300)]),
+                    child: Column(
+                      children: [
+                        _buildReturnRow('1 Day', 'return_1d', 1, isShariah: isShariah), const Divider(color: Colors.white12), 
+                        _buildReturnRow('30 Days', 'return_30d', 30, isShariah: isShariah), const Divider(color: Colors.white12), 
+                        _buildReturnRow('1 Year', 'return_1y', 365, years: 1, isShariah: isShariah), const Divider(color: Colors.white12), 
+                        _buildReturnRow('3 Years', 'return_3y', 1095, years: 3, isShariah: isShariah), const Divider(color: Colors.white12), 
+                        _buildReturnRow('5 Years', 'return_5y', 1825, years: 5, isShariah: isShariah), const Divider(color: Colors.white12), 
+                        _buildReturnRow('10 Years', 'return_10y', 3650, years: 10, isShariah: isShariah), const Divider(color: Colors.white12), 
+                        _buildReturnRow('15 Years', 'return_15y', 5475, years: 15, isShariah: isShariah), const Divider(color: Colors.white12), 
+                        _buildReturnRow('20 Years', 'return_20y', 7300, years: 20, isShariah: isShariah)
+                      ]
+                    ),
                   ),
                   const SizedBox(height: 40),
                 ],

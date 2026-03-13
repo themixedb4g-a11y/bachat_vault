@@ -10,6 +10,7 @@ import urllib3
 import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor
+import yfinance as yf
 
 session = requests.Session()
 session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'})
@@ -17,27 +18,39 @@ session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)
 # Suppress SSL Warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- # --- 1. CONNECTION ---
+# --- 1. CONNECTION ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     print("❌ ERROR: Supabase Keys are missing from GitHub Secrets!")
-    sys.exit(1) # This stops the script cleanly
+    sys.exit(1)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def is_valid_date(date_str, ticker_logic):
+# --- PRE-FETCH FUND MASTER DATA FOR GUARDRAILS ---
+# We fetch this once globally so all tasks can access the logic and categories
+master_res = supabase.table("master_funds").select("ticker, category, return_logic, fund_id_mufap, amc_website_name").execute()
+FUND_LOGIC_MAP = {row['ticker']: row.get('return_logic', 'Absolute') for row in master_res.data}
+FUND_CATEGORY_MAP = {row['ticker']: row.get('category', '') for row in master_res.data}
+
+# --- THE GUARDRAILS ---
+def is_valid_date(date_str, ticker):
     dt = datetime.strptime(date_str, '%Y-%m-%d').date()
     today_pk = datetime.now(pytz.timezone('Asia/Karachi')).date()
+    ticker_logic = FUND_LOGIC_MAP.get(ticker, 'Absolute')
     
-    # Rule 1: No future dates allowed
-    if dt > today_pk: 
-        return False
-    
-    # Rule 2: Block weekends ONLY for 'Absolute' funds
-    if ticker_logic == 'Absolute' and dt.weekday() >= 5: 
-        return False
+    # Only apply these strict time rules to Absolute return funds
+    if ticker_logic == 'Absolute':
+        # Guardrail 1: Block Future Dates
+        if dt > today_pk:
+            print(f"   🛡️ Guardrail active: Skipped {ticker} (Future Date {dt})")
+            return False
         
+        # Guardrail 2: Block Weekends
+        if dt.weekday() >= 5: # 5 is Sat, 6 is Sun
+            print(f"   🛡️ Guardrail active: Skipped {ticker} (Weekend Date {dt})")
+            return False
+            
     return True
 
 # --- TASK A: PSX INDICES ---
@@ -60,8 +73,8 @@ def sync_psx_indices():
         
         if batch:
             supabase.table("benchmarks").upsert(batch, on_conflict="ticker,validity_date").execute()
-            print(f"   ✅ PSX Indices updated.")
-    except Exception as e: print(f"   ❌ PSX Error: {e}")
+            print(f"   ✅ PSX Indices updated.")
+    except Exception as e: print(f"   ❌ PSX Error: {e}")
 
 # --- TASK B: GOLD ---
 def sync_gold_rates():
@@ -74,8 +87,8 @@ def sync_gold_rates():
             if val > 1000000: val = float(str(int(val))[:6])
             today_pk = datetime.now(pytz.timezone('Asia/Karachi')).strftime('%Y-%m-%d')
             supabase.table("benchmarks").upsert({"ticker": "GOLD_24K", "value": val, "validity_date": today_pk, "source": "Gold.pk"}, on_conflict="ticker,validity_date").execute()
-            print(f"   ✅ Gold updated.")
-    except Exception as e: print(f"   ❌ Gold Error: {e}")
+            print(f"   ✅ Gold updated.")
+    except Exception as e: print(f"   ❌ Gold Error: {e}")
 
 # --- TASK C: PSX ETFs ---
 def fetch_etf(ticker):
@@ -84,31 +97,41 @@ def fetch_etf(ticker):
         price = float(re.findall(r'\d+\.\d+', soup.find('div', class_='quote__price').text)[0])
         date_match = re.search(r'[A-Z][a-z]{2}\s\d{2},\s\d{4}', soup.find('div', class_='quote__date').text).group()
         web_date = datetime.strptime(date_match, '%b %d, %Y').strftime('%Y-%m-%d')
-        return {"ticker": ticker, "nav": price, "validity_date": web_date, "source": "PSX"}
+        
+        # Guardrail Check for ETFs
+        if is_valid_date(web_date, ticker):
+            return {"ticker": ticker, "nav": price, "validity_date": web_date, "source": "PSX"}
+        return None
     except: return None
 
 def sync_psx_etfs():
-    print("📊 Syncing ETFs...")
-    etfs = ["JSGBETF", "JSMFETF", "MIIETF", "MZNPETF", "ACIETF", "NBPGETF", "NITGETF", "UBLPETF"]
+    print("📊 Syncing ETFs from PSX...")
+    
+    # Guardrail 3: Dynamically find all ETFs that are NOT Annualized
+    psx_etf_tickers = []
+    for ticker, category in FUND_CATEGORY_MAP.items():
+        if 'Exchange Traded Fund' in str(category):
+            if FUND_LOGIC_MAP.get(ticker) != 'Annualized':
+                psx_etf_tickers.append(ticker)
+
     with ThreadPoolExecutor(max_workers=8) as executor:
-        results = list(filter(None, executor.map(fetch_etf, etfs)))
+        results = list(filter(None, executor.map(fetch_etf, psx_etf_tickers)))
     if results:
         supabase.table("daily_nav").upsert(results, on_conflict="ticker,validity_date").execute()
-        print(f"   ✅ {len(results)} ETFs updated.")
+        print(f"   ✅ {len(results)} ETFs updated from PSX.")
 
 # --- TASK D: TARGETED MUFAP ---
 def sync_mufap_master():
     print("🏛️ Syncing MUFAP (Targeted)...")
-    res = supabase.table("master_funds").select("ticker, fund_id_mufap, return_logic").not_.is_("fund_id_mufap", "null").execute()
     
-    # 🛑 BLOCKLIST: Do not fetch NAVs from MUFAP for these specific PSX ETFs.
-    # (Notice HBLTETF is NOT in this list, so MUFAP will correctly fetch its NAV!)
-    psx_etfs = {"JSGBETF", "JSMFETF", "MIIETF", "MZNPETF", "ACIETF", "NBPGETF", "NITGETF", "UBLPETF"}
-    
-    # Build target lists but filter out the PSX ETFs
-    target_ids = {str(int(float(row['fund_id_mufap']))) for row in res.data if row['ticker'] not in psx_etfs}
-    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in res.data if row['ticker'] not in psx_etfs}
-    logic_map = {row['ticker']: row.get('return_logic', 'Absolute') for row in res.data}
+    # Guardrail 3 Enforcement: Identify ETFs that MUST be scraped from PSX (Absolute Logic)
+    psx_exclusive_etfs = set()
+    for ticker, category in FUND_CATEGORY_MAP.items():
+        if 'Exchange Traded Fund' in str(category) and FUND_LOGIC_MAP.get(ticker) != 'Annualized':
+            psx_exclusive_etfs.add(ticker)
+
+    target_ids = {str(int(float(row['fund_id_mufap']))) for row in master_res.data if row.get('fund_id_mufap') and row['ticker'] not in psx_exclusive_etfs}
+    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in master_res.data if row.get('fund_id_mufap') and row['ticker'] not in psx_exclusive_etfs}
     
     batch = []
     try:
@@ -123,20 +146,18 @@ def sync_mufap_master():
                     ticker = id_to_ticker[m_id]
                     try:
                         dt_str = datetime.strptime(cells[8].text.strip().title(), '%b %d, %Y').strftime('%Y-%m-%d')
-                        if is_valid_date(dt_str, logic_map.get(ticker, 'Absolute')):
+                        if is_valid_date(dt_str, ticker):
                             batch.append({"ticker": ticker, "nav": float(cells[7].text.replace(',', '')), "validity_date": dt_str, "source": "MUFAP"})
                     except: continue
         if batch:
             supabase.table("daily_nav").upsert(batch, on_conflict="ticker,validity_date").execute()
-            print(f"   ✅ {len(batch)} MUFAP funds updated.")
-    except Exception as e: print(f"   ❌ MUFAP Error: {e}")
+            print(f"   ✅ {len(batch)} MUFAP funds updated.")
+    except Exception as e: print(f"   ❌ MUFAP Error: {e}")
 
 # --- TASK E: UBL AMC (Priority Overwrite) ---
 def sync_ubl_amc_refined():
     print("🏦 Syncing UBL AMC (Priority)...")
-    res = supabase.table("master_funds").select("ticker, amc_website_name, return_logic").not_.is_("amc_website_name", "null").execute()
-    ubl_map = {r['amc_website_name'].strip(): r['ticker'] for r in res.data}
-    logic_map = {r['ticker']: r.get('return_logic', 'Absolute') for r in res.data}
+    ubl_map = {r['amc_website_name'].strip(): r['ticker'] for r in master_res.data if r.get('amc_website_name')}
     
     batch = []
     try:
@@ -152,41 +173,32 @@ def sync_ubl_amc_refined():
                     if ticker:
                         try:
                             dt_str = datetime.strptime(cells[1].text.strip(), '%d-%b-%Y').strftime('%Y-%m-%d')
-                            if is_valid_date(dt_str, logic_map.get(ticker, 'Absolute')):
+                            if is_valid_date(dt_str, ticker):
                                 batch.append({"ticker": ticker, "nav": float(cells[3].text.replace(',', '')), "validity_date": dt_str, "source": "AMC_Website"})
                         except: continue
         if batch:
-            print(f"   🔍 Raw UBL items scraped: {len(batch)}")
-            
-            # Crush duplicates using a dictionary
             unique_batch = {}
             for item in batch:
                 unique_batch[(item['ticker'], item['validity_date'])] = item
                 
             final_batch = list(unique_batch.values())
-            print(f"   🧹 Clean UBL items after deduplication: {len(final_batch)}")
-            
-            # Send the clean batch to Supabase
             supabase.table("daily_nav").upsert(final_batch, on_conflict="ticker,validity_date").execute()
-            print(f"   ✅ {len(final_batch)} UBL funds updated (Priority).")
+            print(f"   ✅ {len(final_batch)} UBL funds updated (Priority).")
             
-    except Exception as e: print(f"   ❌ UBL Error: {e}")
+    except Exception as e: print(f"   ❌ UBL Error: {e}")
 
-# --- TASK F: MUFAP PAYOUTS (Tab 4) ---
+# --- TASK F: MUFAP PAYOUTS ---
 def sync_mufap_payouts():
     print("💸 Syncing MUFAP Payouts...")
-    res = supabase.table("master_funds").select("ticker, fund_id_mufap").not_.is_("fund_id_mufap", "null").execute()
-    
-    # 🛑 PAYOUT BLOCKLIST: Fetch payouts for everyone EXCEPT JSGBETF
-    target_ids = {str(int(float(row['fund_id_mufap']))) for row in res.data if row['ticker'] != "JSGBETF"}
-    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in res.data if row['ticker'] != "JSGBETF"}
+    target_ids = {str(int(float(row['fund_id_mufap']))) for row in master_res.data if row.get('fund_id_mufap')}
+    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in master_res.data if row.get('fund_id_mufap')}
     
     batch = []
     try:
         soup = BeautifulSoup(session.get("https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=4", verify=False, timeout=15).text, 'lxml')
         for row in soup.find_all('tr'):
             cells = row.find_all('td')
-            if len(cells) < 10: continue # Ensure row has enough columns
+            if len(cells) < 10: continue 
             
             link = cells[2].find('a', href=True)
             if link and 'FundID=' in link['href']:
@@ -199,11 +211,8 @@ def sync_mufap_payouts():
                         ex_nav_str = cells[8].text.replace(',', '').strip()
                         payout_date_str = cells[9].text.strip()
                         
-                        # Skip if the payout column is empty or has a dash
-                        if not payout_amount_str or payout_amount_str == '-':
-                            continue
+                        if not payout_amount_str or payout_amount_str == '-': continue
                             
-                        # Convert strings to floats/dates
                         payout_amount = float(payout_amount_str)
                         ex_nav = float(ex_nav_str) if ex_nav_str and ex_nav_str != '-' else 0.0
                         dt_str = datetime.strptime(payout_date_str, '%b %d, %Y').strftime('%Y-%m-%d')
@@ -217,19 +226,16 @@ def sync_mufap_payouts():
                     except: continue
                     
         if batch:
-            # Pushing exactly to your matching Supabase column names
             supabase.table("payout_history").upsert(batch, on_conflict="ticker,payout_date").execute()
-            print(f"   ✅ {len(batch)} Payouts synced.")
-    except Exception as e: print(f"   ❌ Payouts Error: {e}")
+            print(f"   ✅ {len(batch)} Payouts synced.")
+    except Exception as e: print(f"   ❌ Payouts Error: {e}")
 
 
-# --- TASK G: MUFAP TER (Tab 5) ---
+# --- TASK G: MUFAP TER ---
 def sync_mufap_ter():
     print("📊 Syncing MUFAP TER...")
-    res = supabase.table("master_funds").select("ticker, fund_id_mufap").not_.is_("fund_id_mufap", "null").execute()
-    
-    target_ids = {str(int(float(row['fund_id_mufap']))) for row in res.data}
-    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in res.data}
+    target_ids = {str(int(float(row['fund_id_mufap']))) for row in master_res.data if row.get('fund_id_mufap')}
+    id_to_ticker = {str(int(float(row['fund_id_mufap']))): row['ticker'] for row in master_res.data if row.get('fund_id_mufap')}
     
     batch = []
     try:
@@ -248,7 +254,6 @@ def sync_mufap_ter():
                         ter_mtd_str = cells[8].text.replace('%', '').replace(',', '').strip()
                         ter_ytd_str = cells[9].text.replace('%', '').replace(',', '').strip()
                         
-                        # Safely convert to float, default to 0.0 if empty/invalid
                         ter_mtd = float(ter_mtd_str) if ter_mtd_str and ter_mtd_str != '-' else 0.0
                         ter_ytd = float(ter_ytd_str) if ter_ytd_str and ter_ytd_str != '-' else 0.0
                         
@@ -256,33 +261,72 @@ def sync_mufap_ter():
                     except: continue
                     
         if batch:
-            # IMPORTANT: Ensure your Supabase 'performance_stats' table has columns named 'ter_mtd' and 'ter_ytd'
             supabase.table("performance_stats").upsert(batch, on_conflict="ticker").execute()
-            print(f"   ✅ {len(batch)} TER stats synced.")
-    except Exception as e: print(f"   ❌ TER Error: {e}")
+            print(f"   ✅ {len(batch)} TER stats synced.")
+    except Exception as e: print(f"   ❌ TER Error: {e}")
+
+# --- TASK: CRYPTO DAILY (Fast & Lean) ---
+def sync_crypto_rates():
+    print("🪙 Syncing Crypto (Daily Routine)...")
+    try:
+        tickers = ["BTC-USD", "ETH-USD", "SOL-USD"]
+        batch = []
+        
+        for t in tickers:
+            # We pull "5d" just to safely cover any long weekends or API hiccups. 
+            # Supabase 'on_conflict' will smoothly ignore the duplicate days.
+            data = yf.Ticker(t).history(period="5d")
+            
+            if not data.empty:
+                clean_ticker = t.split('-')[0]
+                for index, row in data.iterrows():
+                    batch.append({
+                        "ticker": clean_ticker, 
+                        "value": float(row['Close']), 
+                        "validity_date": index.strftime('%Y-%m-%d'), 
+                        "source": "Yahoo Finance"
+                    })
+        
+        if batch:
+            supabase.table("benchmarks").upsert(batch, on_conflict="ticker,validity_date").execute()
+            print(f"   ✅ {len(batch)} Recent Crypto rates synced.")
+            
+    except Exception as e: print(f"   ❌ Crypto Error: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", help="funds, market, or full")
+    # NEW: Updated arguments to handle granular scheduling targets
+    parser.add_argument("--target", help="Specify what to scrape: 'psx', 'mufap', 'gold_ter', or 'all'", default='all')
     args = parser.parse_args()
     start_time = datetime.now()
 
-    if args.mode == "funds":
+    target = args.target.lower()
+    
+    print(f"🚀 Initializing Scraper (Target: {target.upper()})")
+
+    if target == 'psx':
+        sync_psx_indices()
+        sync_psx_etfs()
+    elif target == 'mufap':
+        sync_mufap_master()
+        sync_ubl_amc_refined()
+    elif target == 'gold_ter':
+        sync_gold_rates()
+        sync_mufap_payouts()
+        sync_mufap_ter()
+    elif target == 'market':
+        sync_psx_indices()
+        sync_psx_etfs()
+        sync_gold_rates()
+        sync_crypto_rates()
+    else: # Default 'all'
+        sync_psx_indices()
+        sync_gold_rates()
+        sync_psx_etfs()
         sync_mufap_master()
         sync_ubl_amc_refined()
         sync_mufap_payouts()
         sync_mufap_ter()
-    elif args.mode == "market":
-        sync_psx_indices()
-        sync_psx_etfs()
-        sync_gold_rates()
-    else:
-        sync_psx_indices()
-        sync_gold_rates()
-        sync_psx_etfs()
-        sync_mufap_master()
-        sync_ubl_amc_refined()
-        sync_mufap_payouts()
-        sync_mufap_ter()
+        sync_crypto_rates()
 
     print(f"\n🎉 SYNC COMPLETE. Total Time: {datetime.now() - start_time}")

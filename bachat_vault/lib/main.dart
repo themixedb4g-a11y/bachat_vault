@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart'; // 1. Added splash import
 import 'screens/main_layout.dart'; 
+import 'package:bachat_vault/screens/splash_screen.dart';
 
 Future<void> main() async {
   // 2. Capture the widget binding
@@ -40,7 +41,7 @@ class MyApp extends StatelessWidget {
           secondary: Colors.tealAccent,
         ),
       ),
-      home: const MainLayout(), 
+      home: SplashScreen(), 
     );
   }
 }

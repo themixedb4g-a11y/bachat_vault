@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Added Supabase!
 
 class CalculatorsScreen extends StatefulWidget {
   const CalculatorsScreen({super.key});
@@ -201,6 +202,9 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
   }
 }
 
+// ============================================================================
+// SIP CALCULATOR (UPDATED WITH DYNAMIC NEAREST-MATCH CAGR)
+// ============================================================================
 class SipCalculator extends StatefulWidget {
   const SipCalculator({super.key});
   @override
@@ -216,11 +220,86 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
   double _totalInvested = 0; double _estimatedReturns = 0; double _totalValue = 0;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
+  bool _isLoadingFunds = true;
+  List<Map<String, dynamic>> _allFunds = [];
+  List<String> _categories = ['All'];
+  String _selectedCategory = 'All';
+  String? _selectedFundTicker;
+
   @override
   bool get wantKeepAlive => true;
 
   @override
-  void initState() { super.initState(); _calculate(); }
+  void initState() { 
+    super.initState(); 
+    _calculate(); 
+    _fetchFundsData(); 
+  }
+
+  // UPDATED: Now fetches ALL historical periods!
+  Future<void> _fetchFundsData() async {
+    final SupabaseClient supabase = Supabase.instance.client;
+    
+    final Map<String, String> categoryMap = {
+      'Equity': 'Equity', 'Shariah Compliant Equity': 'Equity',
+      'Money Market': 'Money Market', 'Shariah Compliant Money Market': 'Money Market',
+      'Income': 'Income', 'Shariah Compliant Income': 'Income',
+      'Capital Protected': 'Capital Protected', 'Shariah Compliant Capital Protected': 'Capital Protected',
+      'Capital Protected - Income': 'Capital Protected - Income',
+      'Aggressive Fixed Income': 'Aggressive Fixed Income', 'Shariah Compliant Aggressive Fixed Income': 'Aggressive Fixed Income',
+      'Balanced': 'Balanced', 'Shariah Compliant Balanced': 'Balanced',
+      'Asset Allocation': 'Asset Allocation', 'Shariah Compliant Asset Allocation': 'Asset Allocation',
+      'Fund of Funds': 'Fund of Funds', 'Shariah Compliant Fund of Funds': 'Fund of Funds', 'Shariah Compliant Fund of Funds - CPPI': 'Fund of Funds',
+      'Index Tracker': 'Index Tracker', 'Shariah Compliant Index Tracker': 'Index Tracker', 'Index': 'Index Tracker',
+      'Shariah Compliant Commodities': 'Commodities',
+      'Exchange Traded Fund': 'Exchange Traded Fund', 'Shariah Compliant Exchange Traded Fund': 'Exchange Traded Fund',
+      'Dedicated Equity': 'Dedicated Equity', 'Shariah Compliant Dedicated Equity': 'Dedicated Equity',
+    };
+
+    try {
+      final masterResponse = await supabase.from('master_funds').select('ticker, fund_name, category');
+      // Added all periods here
+      final statsResponse = await supabase.from('performance_stats').select('ticker, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y');
+
+      List<Map<String, dynamic>> combined = [];
+      Set<String> catSet = {};
+
+      for (var mf in masterResponse) {
+        final rawCat = mf['category']?.toString().trim() ?? '';
+        final mappedCat = categoryMap[rawCat] ?? rawCat;
+
+        if (rawCat.toUpperCase().contains('VPS') || mappedCat.toUpperCase().contains('VPS')) continue;
+        if (mappedCat == 'Crypto' || ['KSE100', 'KMI30', 'GOLD_24K', 'CPI_PK'].contains(mf['ticker'])) continue;
+
+        final ticker = mf['ticker'];
+        final stats = statsResponse.firstWhere((s) => s['ticker'] == ticker, orElse: () => <String, dynamic>{});
+
+        combined.add({
+          'ticker': ticker,
+          'fund_name': mf['fund_name'] ?? 'Unknown',
+          'category': mappedCat,
+          'return_1y': stats['return_1y'],
+          'return_3y': stats['return_3y'],
+          'return_5y': stats['return_5y'],
+          'return_10y': stats['return_10y'],
+          'return_15y': stats['return_15y'],
+          'return_20y': stats['return_20y'],
+        });
+        
+        if (mappedCat.isNotEmpty) catSet.add(mappedCat);
+      }
+
+      if (mounted) {
+        setState(() {
+          _allFunds = combined;
+          _categories = ['All', ...catSet.toList()..sort()];
+          _isLoadingFunds = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingFunds = false);
+    }
+  }
 
   void _calculate() {
     final double initialMonthlyInvestment = double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
@@ -240,6 +319,75 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     } else {
       setState(() { _totalInvested = 0; _totalValue = 0; _estimatedReturns = 0; });
     }
+  }
+
+  void _onCategoryChanged(String? val) {
+    if (val != null) {
+      setState(() {
+        _selectedCategory = val;
+        _selectedFundTicker = null; 
+      });
+    }
+  }
+
+  // UPDATED: The Nearest-Match Algorithm!
+  void _onFundSelected(String? ticker) {
+    setState(() { _selectedFundTicker = ticker; });
+    if (ticker == null) return;
+
+    final fund = _allFunds.firstWhere((f) => f['ticker'] == ticker, orElse: () => {});
+    if (fund.isEmpty) return;
+
+    // Grab the target years the user entered in the calculator
+    int targetYears = int.tryParse(_yearsController.text.replaceAll(',', '')) ?? 5; // Default to 5 if empty
+
+    // Map of all possible periods
+    List<Map<String, dynamic>> availablePeriods = [
+      {'years': 1, 'key': 'return_1y'},
+      {'years': 3, 'key': 'return_3y'},
+      {'years': 5, 'key': 'return_5y'},
+      {'years': 10, 'key': 'return_10y'},
+      {'years': 15, 'key': 'return_15y'},
+      {'years': 20, 'key': 'return_20y'},
+    ];
+
+    // 1. Filter down to ONLY the periods this specific fund actually has data for
+    var validPeriods = availablePeriods.where((p) => fund[p['key']] != null).toList();
+
+    if (validPeriods.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not enough history to calculate an average for this fund.'), backgroundColor: Colors.redAccent, duration: Duration(seconds: 2)),
+      );
+      return;
+    }
+
+    // 2. Sort the valid periods by how close they are to the user's Target Years
+    validPeriods.sort((a, b) {
+      int diffA = (a['years'] - targetYears).abs();
+      int diffB = (b['years'] - targetYears).abs();
+      return diffA.compareTo(diffB);
+    });
+
+    // 3. The closest match is now the first item in the list!
+    var bestMatch = validPeriods.first;
+    int bestYears = bestMatch['years'];
+    double growthFactor = (fund[bestMatch['key']] as num).toDouble();
+
+    // Calculate Annualized Return (CAGR)
+    double cagr = (pow(growthFactor, 1.0 / bestYears) - 1.0) * 100;
+    
+    // Inject and Calculate
+    _rateController.text = cagr.toStringAsFixed(2);
+    _calculate();
+    
+    // Alert the user exactly which period was used
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Auto-filled Expected Return using the closest match: $bestYears-Year historical average (${cagr.toStringAsFixed(2)}%)', style: const TextStyle(color: Colors.white)), 
+        backgroundColor: Colors.teal,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Widget _buildField({required String label, required String prefix, required String suffix, required TextEditingController controller, bool isCurrency = false}) {
@@ -262,9 +410,40 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     );
   }
 
+  Widget _buildDropdown({required String label, required String? value, required List<DropdownMenuItem<String>> items, required void Function(String?) onChanged}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 8),
+        Container(
+          height: 56, 
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.1))),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              dropdownColor: const Color(0xFF203A43),
+              icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+              value: value,
+              items: items,
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    
+    List<Map<String, dynamic>> filteredFunds = _selectedCategory == 'All' 
+        ? _allFunds 
+        : _allFunds.where((f) => f['category'] == _selectedCategory).toList();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -281,6 +460,45 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
                   children: [
                     Row(children: [Expanded(child: _buildField(label: 'Monthly Investment', prefix: 'PKR', suffix: '', controller: _amountController, isCurrency: true)), const SizedBox(width: 16), Expanded(child: _buildField(label: 'Annual Step-up', prefix: '', suffix: '%', controller: _stepUpController))]), const SizedBox(height: 16),
                     Row(children: [Expanded(child: _buildField(label: 'Expected Return', prefix: '', suffix: '%', controller: _rateController)), const SizedBox(width: 16), Expanded(child: _buildField(label: 'Time Period', prefix: '', suffix: 'Years', controller: _yearsController))]),
+                    
+                    const SizedBox(height: 24),
+                    const Divider(color: Colors.white12),
+                    const SizedBox(height: 12),
+                    const Text('Or auto-fill Expected Return from a specific fund:', style: TextStyle(color: Colors.tealAccent, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    const SizedBox(height: 12),
+                    
+                    if (_isLoadingFunds) 
+                      const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.tealAccent, strokeWidth: 2)))
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: _buildDropdown(
+                              label: 'Category',
+                              value: _selectedCategory,
+                              items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c, overflow: TextOverflow.ellipsis))).toList(),
+                              onChanged: _onCategoryChanged,
+                            )
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 6,
+                            child: _buildDropdown(
+                              label: 'Select Fund',
+                              value: _selectedFundTicker,
+                              items: [
+                                const DropdownMenuItem(value: null, child: Text('Choose a fund...', style: TextStyle(color: Colors.white54))),
+                                ...filteredFunds.map((f) => DropdownMenuItem(
+                                  value: f['ticker'] as String, 
+                                  child: Text(f['fund_name'] as String, overflow: TextOverflow.ellipsis)
+                                )).toList()
+                              ],
+                              onChanged: _onFundSelected,
+                            )
+                          ),
+                        ]
+                      ),
                   ],
                 ),
               ),
@@ -313,6 +531,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(color: Colors.white70, fontSize: isTotal ? 16 : 14, fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500)), Text(value, style: TextStyle(color: valueColor, fontSize: isTotal ? 22 : 16, fontWeight: FontWeight.bold))]);
   }
 }
+// ============================================================================
 
 class SwpCalculator extends StatefulWidget {
   const SwpCalculator({super.key});
