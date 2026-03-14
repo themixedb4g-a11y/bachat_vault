@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // Added Supabase!
+import 'package:supabase_flutter/supabase_flutter.dart'; 
 
 class CalculatorsScreen extends StatefulWidget {
   const CalculatorsScreen({super.key});
@@ -236,7 +236,71 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     _fetchFundsData(); 
   }
 
-  // UPDATED: Now fetches ALL historical periods!
+  // INCORPORATED: The full name shortener
+  String _cleanFundName(String name) {
+    return name
+        .replaceAll('Exchange Traded Fund', 'ETF')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan I)', 'NBP Islamic Principal Protection Plan I')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan II)', 'NBP Islamic Principal Protection Plan II')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan III)', 'NBP Islamic Principal Protection Plan III')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan IV)', 'NBP Islamic Principal Protection Plan IV')
+        .replaceAll('Pak-Qatar Asset Allocation Plan I (PQAAP  IA)', 'Pak Qatar Asset Allocation Plan I')
+        .replaceAll('Pak-Qatar Asset Allocation Plan II (PQAAP  IIA)', 'Pak Qatar Asset Allocation Plan II')
+        .replaceAll('Pak-Qatar Asset Allocation Plan III (PQAAP  IIIA)', 'Pak Qatar Asset Allocation Plan III')
+        .replaceAll('Alhamra Opportunity Fund (Dividend Strategy Plan)', 'Alhamra Opportunity Fund')
+        .replaceAll('MCB Pakistan Opportunity Fund (MCB Pakistan  Dividend Yield Plan)', 'MCB Pakistan Opportunity Fund')
+        .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
+        .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
+        .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
+        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
+        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
+        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
+        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
+        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
+        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
+        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
+        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
+        .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan I)', 'Faysal Islamic Financial Growth Plan I')
+        .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan II)', 'Faysal Islamic Financial Growth Plan II')
+        .replaceAll('Atlas Islamic Fund of Funds (Atlas Aggressive Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Aggressive)')
+        .replaceAll('Atlas Islamic Fund of Funds (Atlas Conservative Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Conservative)')
+        .replaceAll('Atlas Islamic Fund of Funds (Atlas Moderate Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Moderate)')
+        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Moderate Allocation Plan)', 'Alfalah GHP IPP Fund (Moderate)')
+        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Active Allocation Plan II)', 'Alfalah GHP IPP Fund (Active)')
+        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Balance Allocation Plan)', 'Alfalah GHP IPP Fund (Balance)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Active Allocation Plan)', 'Alfalah GHP PP Fund (Active)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Conservative Allocation Plan)', 'Alfalah GHP PP Fund (Conservative)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Capital Preservation Plan IV)', 'Alfalah GHP PP Fund (Capital Preservation Plan IV)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Moderate Allocation Plan)', 'Alfalah GHP PP Fund (Moderate)')
+        .replaceAll('Alfalah Financial Value Fund (Alfalah Financial Value Plan I)', 'Alfalah Financial Value Plan I')
+        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan I)', 'Alfalah Islamic Sovereign Plan I')
+        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan II)', 'Alfalah Islamic Sovereign Plan II')
+        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan III)', 'Alfalah Islamic Sovereign Plan III')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Very Conservative Allocation Plan)', 'Meezan FP Fund of Funds (Very Conservative)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Moderate)', 'Meezan FP Fund of Funds (Moderate)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Conservative)', 'Meezan FP Fund of Funds (Conservative)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (MAAP I)', 'Meezan FP Fund of Funds (Conservative)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Aggressive)', 'Meezan FP Fund of Funds (Aggressive)')
+        .replaceAll('Meezan Dynamic Asset Allocation Fund (Meezan Dividend Yield Plan)', 'Meezan Dynamic Asset Allocation Fund')
+        .replaceAll('Meezan Daily Income Fund (Meezan Mahana Munafa Plan)', 'Meezan Mahana Munafa Plan')
+        .replaceAll('Meezan Daily Income Fund (Meezan Munafa Plan I)', 'Meezan Munafa Plan I')
+        .replaceAll('Meezan Daily Income Fund (Meezan Sehl Account Plan) (MSHP)', 'Meezan Sehl Account Plan')
+        .replaceAll('Meezan Daily Income Fund (Meezan Super Saver Plan) (MSSP)', 'Meezan Super Saver Plan')
+        .replaceAll('ABL Islamic Financial Planning Fund (Conservative Allocation Plan)', 'ABL Islamic FP Fund (Conservative)')
+        .replaceAll('ABL Financial Planning Fund (Strategic Allocation Plan)', 'ABL FP Fund (Strategic Allocation Plan)')
+        .replaceAll('ABL Financial Planning Fund (Conservative Plan)', 'ABL Islamic FP Fund (Conservative)')
+        .replaceAll('ABL Islamic Financial Planning Fund (Active Allocation Plan)', 'ABL Islamic FP Fund (Active)')
+        .replaceAll('ABL Islamic Financial Planning Fund (Capital Preservation Plan I)', 'ABL Islamic FP Fund (Capital Preservation Plan I)')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan I)', 'ABL Special Saving Plan I')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan II)', 'ABL Special Saving Plan II')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan III)', 'ABL Special Saving Plan III')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan IV)', 'ABL Special Saving Plan IV')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan V)', 'ABL Special Saving Plan V')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan VI)', 'ABL Special Saving Plan VI')
+        .replaceAll('Government', 'Govt.') 
+        .trim();
+  }
+
   Future<void> _fetchFundsData() async {
     final SupabaseClient supabase = Supabase.instance.client;
     
@@ -250,7 +314,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
       'Balanced': 'Balanced', 'Shariah Compliant Balanced': 'Balanced',
       'Asset Allocation': 'Asset Allocation', 'Shariah Compliant Asset Allocation': 'Asset Allocation',
       'Fund of Funds': 'Fund of Funds', 'Shariah Compliant Fund of Funds': 'Fund of Funds', 'Shariah Compliant Fund of Funds - CPPI': 'Fund of Funds',
-      'Index Tracker': 'Index Tracker', 'Shariah Compliant Index Tracker': 'Index Tracker', 'Index': 'Index Tracker',
+      'Index Tracker': 'Index Tracker', 'Shariah Compliant Index Tracker': 'Index Tracker', 'Index': 'Index',
       'Shariah Compliant Commodities': 'Commodities',
       'Exchange Traded Fund': 'Exchange Traded Fund', 'Shariah Compliant Exchange Traded Fund': 'Exchange Traded Fund',
       'Dedicated Equity': 'Dedicated Equity', 'Shariah Compliant Dedicated Equity': 'Dedicated Equity',
@@ -258,7 +322,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
 
     try {
       final masterResponse = await supabase.from('master_funds').select('ticker, fund_name, category');
-      // Added all periods here
       final statsResponse = await supabase.from('performance_stats').select('ticker, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y');
 
       List<Map<String, dynamic>> combined = [];
@@ -330,7 +393,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     }
   }
 
-  // UPDATED: The Nearest-Match Algorithm!
   void _onFundSelected(String? ticker) {
     setState(() { _selectedFundTicker = ticker; });
     if (ticker == null) return;
@@ -338,10 +400,8 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     final fund = _allFunds.firstWhere((f) => f['ticker'] == ticker, orElse: () => {});
     if (fund.isEmpty) return;
 
-    // Grab the target years the user entered in the calculator
-    int targetYears = int.tryParse(_yearsController.text.replaceAll(',', '')) ?? 5; // Default to 5 if empty
+    int targetYears = int.tryParse(_yearsController.text.replaceAll(',', '')) ?? 5; 
 
-    // Map of all possible periods
     List<Map<String, dynamic>> availablePeriods = [
       {'years': 1, 'key': 'return_1y'},
       {'years': 3, 'key': 'return_3y'},
@@ -351,7 +411,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
       {'years': 20, 'key': 'return_20y'},
     ];
 
-    // 1. Filter down to ONLY the periods this specific fund actually has data for
     var validPeriods = availablePeriods.where((p) => fund[p['key']] != null).toList();
 
     if (validPeriods.isEmpty) {
@@ -361,26 +420,21 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
       return;
     }
 
-    // 2. Sort the valid periods by how close they are to the user's Target Years
     validPeriods.sort((a, b) {
       int diffA = (a['years'] - targetYears).abs();
       int diffB = (b['years'] - targetYears).abs();
       return diffA.compareTo(diffB);
     });
 
-    // 3. The closest match is now the first item in the list!
     var bestMatch = validPeriods.first;
     int bestYears = bestMatch['years'];
     double growthFactor = (fund[bestMatch['key']] as num).toDouble();
 
-    // Calculate Annualized Return (CAGR)
     double cagr = (pow(growthFactor, 1.0 / bestYears) - 1.0) * 100;
     
-    // Inject and Calculate
     _rateController.text = cagr.toStringAsFixed(2);
     _calculate();
     
-    // Alert the user exactly which period was used
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Auto-filled Expected Return using the closest match: $bestYears-Year historical average (${cagr.toStringAsFixed(2)}%)', style: const TextStyle(color: Colors.white)), 
@@ -490,9 +544,10 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
                               value: _selectedFundTicker,
                               items: [
                                 const DropdownMenuItem(value: null, child: Text('Choose a fund...', style: TextStyle(color: Colors.white54))),
+                                // BUG FIXED HERE: Uses 'f' instead of 'fund', and applies the shortener perfectly.
                                 ...filteredFunds.map((f) => DropdownMenuItem(
                                   value: f['ticker'] as String, 
-                                  child: Text(f['fund_name'] as String, overflow: TextOverflow.ellipsis)
+                                  child: Text(_cleanFundName(f['fund_name']?.toString() ?? 'Unknown'), overflow: TextOverflow.ellipsis, maxLines: 1)
                                 )).toList()
                               ],
                               onChanged: _onFundSelected,
@@ -532,7 +587,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(color: Colors.white70, fontSize: isTotal ? 16 : 14, fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500)), Text(value, style: TextStyle(color: valueColor, fontSize: isTotal ? 22 : 16, fontWeight: FontWeight.bold))]);
   }
 }
-// ============================================================================
 
 class SwpCalculator extends StatefulWidget {
   const SwpCalculator({super.key});
@@ -720,7 +774,6 @@ class _FireCalculatorState extends State<FireCalculator> with AutomaticKeepAlive
     }
   }
 
-  // TIGHTENED UI FOR FIRE CALCULATOR
   Widget _buildField({required String label, required String prefix, required String suffix, required TextEditingController controller, bool isCurrency = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -737,7 +790,7 @@ class _FireCalculatorState extends State<FireCalculator> with AutomaticKeepAlive
             decoration: InputDecoration(
               prefixText: prefix.isNotEmpty ? '$prefix ' : null, prefixStyle: const TextStyle(color: Colors.tealAccent, fontSize: 14, fontWeight: FontWeight.bold),
               suffixText: suffix.isNotEmpty ? ' $suffix' : null, suffixStyle: const TextStyle(color: Colors.white54, fontSize: 12),
-              border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), // Shrunk padding heavily!
+              border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
           ),
         ),

@@ -78,7 +78,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               children: [
                 // Your Full Logo (Icon + Text)
                 Image.asset(
-                  'assets/app_logo.png',
+                  'assets/splash_logo.png',
                   width: 280, // Increased width so the built-in text is easy to read
                   errorBuilder: (context, error, stackTrace) => const Icon(
                     Icons.account_balance_wallet,
