@@ -157,12 +157,28 @@ def sync_mufap_master():
 # --- TASK E: UBL AMC (Priority Overwrite) ---
 def sync_ubl_amc_refined():
     print("🏦 Syncing UBL AMC (Priority)...")
+    
+    # Standard map for Conventional & Islamic tables
     ubl_map = {r['amc_website_name'].strip(): r['ticker'] for r in master_res.data if r.get('amc_website_name')}
+    
+    # Custom map for Pension funds based on your Google Sheets INDEX logic!
+    # Format: (Sub-Fund Name, Occurrence Count) : 'Ticker'
+    pension_map = {
+        ('Money Market Sub-Fund', 1): 'UBLRSF-MMSF',
+        ('Debt Sub-Fund', 1): 'UBLRSF-DSF',
+        ('Equity Sub-Fund', 1): 'UBLRSF-ESF',
+        ('Commodity Sub-Fund', 1): 'UBLRSF-GSF',
+        ('Money Market Sub-Fund', 2): 'ALAIRSF-MMSF',
+        ('Debt Sub-Fund', 2): 'ALAIRSF-DSF',
+        ('Equity Sub-Fund', 2): 'ALAIRSF-ESF'
+    }
     
     batch = []
     try:
         url = "https://www.ublfunds.com.pk/resources-tools/fund-performance-tools/latest-fund-prices/"
         soup = BeautifulSoup(session.get(url, verify=False, timeout=15).text, 'lxml')
+        
+        # --- 1. Process Normal Tables (Conventional & Islamic) ---
         for table_id in ['conventional-mutual-fund-schemes', 'islamic-mutual-fund-schemes']:
             table = soup.find('table', id=table_id)
             if not table: continue
@@ -176,16 +192,42 @@ def sync_ubl_amc_refined():
                             if is_valid_date(dt_str, ticker):
                                 batch.append({"ticker": ticker, "nav": float(cells[3].text.replace(',', '')), "validity_date": dt_str, "source": "AMC_Website"})
                         except: continue
-        if batch:
-            unique_batch = {}
-            for item in batch:
-                unique_batch[(item['ticker'], item['validity_date'])] = item
-                
-            final_batch = list(unique_batch.values())
-            supabase.table("daily_nav").upsert(final_batch, on_conflict="ticker,validity_date").execute()
-            print(f"   ✅ {len(final_batch)} UBL funds updated (Priority).")
+
+        # --- 2. Process Pension Table (Using Google Sheets counting logic) ---
+        pension_table = soup.find('table', id='pension-schemes')
+        if pension_table:
+            seen_counts = {} # Keeps track of how many times we've seen a name
             
-    except Exception as e: print(f"   ❌ UBL Error: {e}")
+            for row in pension_table.find_all('tr'):
+                cells = row.find_all('td')
+                if len(cells) >= 4:
+                    sub_fund_name = cells[0].get_text(strip=True)
+                    
+                    # If it's one of our target sub-funds, count it
+                    if sub_fund_name in ['Money Market Sub-Fund', 'Debt Sub-Fund', 'Equity Sub-Fund', 'Commodity Sub-Fund']:
+                        seen_counts[sub_fund_name] = seen_counts.get(sub_fund_name, 0) + 1
+                        occurrence = seen_counts[sub_fund_name]
+                        
+                        # Look up the ticker based on the name AND the occurrence count
+                        ticker = pension_map.get((sub_fund_name, occurrence))
+                        
+                        if ticker:
+                            try:
+                                dt_str = datetime.strptime(cells[1].text.strip(), '%d-%b-%Y').strftime('%Y-%m-%d')
+                                if is_valid_date(dt_str, ticker):
+                                    batch.append({"ticker": ticker, "nav": float(cells[3].text.replace(',', '')), "validity_date": dt_str, "source": "AMC_Website"})
+                            except: continue
+
+        # --- Final Push to Supabase ---
+        if batch:
+            unique_batch = { (item['ticker'], item['validity_date']): item for item in batch }
+            final_batch = list(unique_batch.values())
+            
+            supabase.table("daily_nav").upsert(final_batch, on_conflict="ticker,validity_date").execute()
+            print(f"   ✅ {len(final_batch)} UBL funds updated (Priority, including Pensions!).")
+            
+    except Exception as e: 
+        print(f"   ❌ UBL Error: {e}")
 
 # --- TASK F: MUFAP PAYOUTS ---
 def sync_mufap_payouts():
