@@ -344,6 +344,9 @@ def sync_mufap_payouts():
             # Reverted: No manual filter here because the key is 'payout_date', not 'validity_date'
             supabase.table("payout_history").upsert(batch, on_conflict="ticker,payout_date").execute()
             print(f"   ✅ {len(batch)} Payouts synced.")
+            
+    except Exception as e: 
+        print(f"   ❌ Payouts Error: {e}")
 
 
 # --- TASK G: MUFAP TER ---
@@ -379,6 +382,9 @@ def sync_mufap_ter():
             # Reverted: No manual filter here because performance_stats has no dates or source column
             supabase.table("performance_stats").upsert(batch, on_conflict="ticker").execute()
             print(f"   ✅ {len(batch)} TER stats synced.")
+            
+    except Exception as e: 
+        print(f"   ❌ TER Error: {e}")
 
 # --- TASK: CRYPTO DAILY (Fast & Lean) ---
 def sync_crypto_rates():
