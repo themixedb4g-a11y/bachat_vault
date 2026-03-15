@@ -158,19 +158,23 @@ def sync_mufap_master():
 def sync_ubl_amc_refined():
     print("🏦 Syncing UBL AMC (Priority)...")
     
-    # Standard map for Conventional & Islamic tables
-    ubl_map = {r['amc_website_name'].strip(): r['ticker'] for r in master_res.data if r.get('amc_website_name')}
+    # Helper function to remove dashes, asterisks, and make text lowercase for perfect matching
+    def clean_text(text):
+        if not text: return ""
+        return text.lower().replace('-', ' ').replace('*', '').replace('  ', ' ').strip()
     
-    # Custom map for Pension funds based on your Google Sheets INDEX logic!
-    # Format: (Sub-Fund Name, Occurrence Count) : 'Ticker'
+    # Standard map for Conventional & Islamic tables (Now fuzzy-matched!)
+    ubl_map = {clean_text(r['amc_website_name']): r['ticker'] for r in master_res.data if r.get('amc_website_name')}
+    
+    # Custom map for Pension funds (Simplified to just keywords)
     pension_map = {
-        ('Money Market Sub-Fund', 1): 'UBLRSF-MMSF',
-        ('Debt Sub-Fund', 1): 'UBLRSF-DSF',
-        ('Equity Sub-Fund', 1): 'UBLRSF-ESF',
-        ('Commodity Sub-Fund', 1): 'UBLRSF-GSF',
-        ('Money Market Sub-Fund', 2): 'ALAIRSF-MMSF',
-        ('Debt Sub-Fund', 2): 'ALAIRSF-DSF',
-        ('Equity Sub-Fund', 2): 'ALAIRSF-ESF'
+        ('money market', 1): 'UBLRSF-MMSF',
+        ('debt', 1): 'UBLRSF-DSF',
+        ('equity', 1): 'UBLRSF-ESF',
+        ('commodity', 1): 'UBLRSF-GSF',
+        ('money market', 2): 'ALAIRSF-MMSF',
+        ('debt', 2): 'ALAIRSF-DSF',
+        ('equity', 2): 'ALAIRSF-ESF'
     }
     
     batch = []
@@ -185,7 +189,9 @@ def sync_ubl_amc_refined():
             for row in table.find_all('tr'):
                 cells = row.find_all('td')
                 if len(cells) >= 4:
-                    ticker = ubl_map.get(cells[0].get_text(strip=True))
+                    raw_name = cells[0].get_text(strip=True)
+                    # Use our clean_text function to bypass typos
+                    ticker = ubl_map.get(clean_text(raw_name))
                     if ticker:
                         try:
                             dt_str = datetime.strptime(cells[1].text.strip(), '%d-%b-%Y').strftime('%Y-%m-%d')
@@ -193,23 +199,27 @@ def sync_ubl_amc_refined():
                                 batch.append({"ticker": ticker, "nav": float(cells[3].text.replace(',', '')), "validity_date": dt_str, "source": "AMC_Website"})
                         except: continue
 
-        # --- 2. Process Pension Table (Using Google Sheets counting logic) ---
+        # --- 2. Process Pension Table (Using Keyword extraction) ---
         pension_table = soup.find('table', id='pension-schemes')
         if pension_table:
-            seen_counts = {} # Keeps track of how many times we've seen a name
+            seen_counts = {} 
             
             for row in pension_table.find_all('tr'):
                 cells = row.find_all('td')
                 if len(cells) >= 4:
-                    sub_fund_name = cells[0].get_text(strip=True)
+                    raw_name = cells[0].get_text(strip=True).lower()
                     
-                    # If it's one of our target sub-funds, count it
-                    if sub_fund_name in ['Money Market Sub-Fund', 'Debt Sub-Fund', 'Equity Sub-Fund', 'Commodity Sub-Fund']:
-                        seen_counts[sub_fund_name] = seen_counts.get(sub_fund_name, 0) + 1
-                        occurrence = seen_counts[sub_fund_name]
-                        
-                        # Look up the ticker based on the name AND the occurrence count
-                        ticker = pension_map.get((sub_fund_name, occurrence))
+                    # Look for the keywords inside the messy text
+                    fund_type = None
+                    if 'money market' in raw_name: fund_type = 'money market'
+                    elif 'debt' in raw_name: fund_type = 'debt'
+                    elif 'equity' in raw_name: fund_type = 'equity'
+                    elif 'commodity' in raw_name: fund_type = 'commodity'
+                    
+                    if fund_type:
+                        seen_counts[fund_type] = seen_counts.get(fund_type, 0) + 1
+                        occurrence = seen_counts[fund_type]
+                        ticker = pension_map.get((fund_type, occurrence))
                         
                         if ticker:
                             try:
