@@ -35,23 +35,65 @@ FUND_CATEGORY_MAP = {row['ticker']: row.get('category', '') for row in master_re
 
 # --- THE GUARDRAILS ---
 def is_valid_date(date_str, ticker):
-    dt = datetime.strptime(date_str, '%Y-%m-%d').date()
-    today_pk = datetime.now(pytz.timezone('Asia/Karachi')).date()
-    ticker_logic = FUND_LOGIC_MAP.get(ticker, 'Absolute')
-    
-    # Only apply these strict time rules to Absolute return funds
-    if ticker_logic == 'Absolute':
-        # Guardrail 1: Block Future Dates
-        if dt > today_pk:
-            print(f"   🛡️ Guardrail active: Skipped {ticker} (Future Date {dt})")
-            return False
+    try:
+        dt = datetime.strptime(date_str, '%Y-%m-%d').date()
+        today_pk = datetime.now(pytz.timezone('Asia/Karachi')).date()
         
-        # Guardrail 2: Block Weekends
-        if dt.weekday() >= 5: # 5 is Sat, 6 is Sun
-            print(f"   🛡️ Guardrail active: Skipped {ticker} (Weekend Date {dt})")
-            return False
+        # Determine the logic. If it's not in the map, default to strict 'Absolute' to be safe.
+        ticker_logic = FUND_LOGIC_MAP.get(ticker, 'Absolute')
+        
+        # RULE 1: Annualized funds accrue daily. They are immune to future/weekend blocks.
+        if ticker_logic == 'Annualized':
+            return True
             
-    return True
+        # RULE 2: Absolute funds must pass the strict tests.
+        if ticker_logic == 'Absolute':
+            
+            # Guardrail A: Block Future Dates (No Absolute fund can predict tomorrow)
+            if dt > today_pk:
+                print(f"   🛡️ Guardrail active: Skipped {ticker} (Future Date {dt})")
+                return False
+                
+            # Guardrail B: Block Weekends, EXCEPT for our VIP 24/7/Static list
+            weekend_exceptions = ['BTC', 'ETH', 'SOL', 'BTC-USD', 'ETH-USD', 'SOL-USD', 'CPI_PK', 'GOLD_24K']
+            
+            if dt.weekday() >= 5 and ticker not in weekend_exceptions:
+                print(f"   🛡️ Guardrail active: Skipped {ticker} (Weekend Date {dt})")
+                return False
+                
+        # If it passed all the tests (or was a VIP on a weekend), let it through!
+        return True
+        
+    except Exception as e:
+        print(f"   ⚠️ Date parsing error for {ticker}: {e}")
+        return False
+
+def filter_manual_entries(batch, table_name):
+    """Checks the database and removes any items from the batch that were manually updated."""
+    if not batch: return []
+    try:
+        # Grab all the unique dates currently in our scraper's hands
+        dates = list(set([item['validity_date'] for item in batch]))
+        
+        # Ask Supabase which of these dates were updated manually
+        res = supabase.table(table_name).select('ticker, validity_date')\
+            .in_('validity_date', dates)\
+            .ilike('source', '%Manual%').execute() # Uses ilike to catch "Manual" or "manual"
+            
+        # Create a fast lookup set of the manual items
+        manual_set = {(r['ticker'], r['validity_date']) for r in res.data}
+        
+        # Build a new batch that ONLY includes items NOT in the manual set
+        filtered_batch = [item for item in batch if (item['ticker'], item['validity_date']) not in manual_set]
+        
+        skipped = len(batch) - len(filtered_batch)
+        if skipped > 0:
+            print(f"   🛡️ Protected {skipped} manually updated records from being overwritten.")
+            
+        return filtered_batch
+    except Exception as e:
+        print(f"   ⚠️ Could not check manual entries, proceeding carefully: {e}")
+        return batch
 
 # --- TASK A: PSX INDICES ---
 def sync_psx_indices():
@@ -72,7 +114,11 @@ def sync_psx_indices():
                 batch.append({"ticker": ticker, "value": val, "validity_date": web_date, "source": "PSX"})
         
         if batch:
-            supabase.table("benchmarks").upsert(batch, on_conflict="ticker,validity_date").execute()
+
+            safe_batch = filter_manual_entries(batch, "benchmarks")
+            
+            if safe_batch:
+                supabase.table("benchmarks").upsert(safe_batch, on_conflict="ticker,validity_date").execute()
             print(f"   ✅ PSX Indices updated.")
     except Exception as e: print(f"   ❌ PSX Error: {e}")
 
@@ -86,9 +132,15 @@ def sync_gold_rates():
             val = float(re.search(r'(\d+\.\d+|\d+)', gold_el.text.replace('Rs.', '').replace(',', '')).group(1))
             if val > 1000000: val = float(str(int(val))[:6])
             today_pk = datetime.now(pytz.timezone('Asia/Karachi')).strftime('%Y-%m-%d')
-            supabase.table("benchmarks").upsert({"ticker": "GOLD_24K", "value": val, "validity_date": today_pk, "source": "Gold.pk"}, on_conflict="ticker,validity_date").execute()
-            print(f"   ✅ Gold updated.")
-    except Exception as e: print(f"   ❌ Gold Error: {e}")
+            
+            # Format as a list containing one dictionary
+            gold_data = [{"ticker": "GOLD_24K", "value": val, "validity_date": today_pk, "source": "Gold.pk"}]
+            safe_batch = filter_manual_entries(gold_data, "benchmarks")
+            
+            if safe_batch:
+                supabase.table("benchmarks").upsert(safe_batch, on_conflict="ticker,validity_date").execute()
+                print(f"   ✅ Gold updated.")
+    except Exception as e: print(f"   ❌ Gold Error: {e}")
 
 # --- TASK C: PSX ETFs ---
 def fetch_etf(ticker):
@@ -107,7 +159,6 @@ def fetch_etf(ticker):
 def sync_psx_etfs():
     print("📊 Syncing ETFs from PSX...")
     
-    # Guardrail 3: Dynamically find all ETFs that are NOT Annualized
     psx_etf_tickers = []
     for ticker, category in FUND_CATEGORY_MAP.items():
         if 'Exchange Traded Fund' in str(category):
@@ -116,9 +167,14 @@ def sync_psx_etfs():
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         results = list(filter(None, executor.map(fetch_etf, psx_etf_tickers)))
+        
     if results:
-        supabase.table("daily_nav").upsert(results, on_conflict="ticker,validity_date").execute()
-        print(f"   ✅ {len(results)} ETFs updated from PSX.")
+        # Pass 'results' into the filter instead of 'batch'
+        safe_batch = filter_manual_entries(results, "daily_nav")
+        
+        if safe_batch:
+            supabase.table("daily_nav").upsert(safe_batch, on_conflict="ticker,validity_date").execute()
+            print(f"   ✅ {len(safe_batch)} ETFs updated from PSX.")
 
 # --- TASK D: TARGETED MUFAP ---
 def sync_mufap_master():
@@ -150,7 +206,10 @@ def sync_mufap_master():
                             batch.append({"ticker": ticker, "nav": float(cells[7].text.replace(',', '')), "validity_date": dt_str, "source": "MUFAP"})
                     except: continue
         if batch:
-            supabase.table("daily_nav").upsert(batch, on_conflict="ticker,validity_date").execute()
+            safe_batch = filter_manual_entries(batch, "daily_nav")
+            
+            if safe_batch:
+                supabase.table("daily_nav").upsert(safe_batch, on_conflict="ticker,validity_date").execute()
             print(f"   ✅ {len(batch)} MUFAP funds updated.")
     except Exception as e: print(f"   ❌ MUFAP Error: {e}")
 
@@ -228,13 +287,17 @@ def sync_ubl_amc_refined():
                                     batch.append({"ticker": ticker, "nav": float(cells[3].text.replace(',', '')), "validity_date": dt_str, "source": "AMC_Website"})
                             except: continue
 
-        # --- Final Push to Supabase ---
+        # --- Final Push to Supabase (Task E Bottom Part) ---
         if batch:
             unique_batch = { (item['ticker'], item['validity_date']): item for item in batch }
             final_batch = list(unique_batch.values())
             
-            supabase.table("daily_nav").upsert(final_batch, on_conflict="ticker,validity_date").execute()
-            print(f"   ✅ {len(final_batch)} UBL funds updated (Priority, including Pensions!).")
+            # Filter the final_batch right here
+            safe_batch = filter_manual_entries(final_batch, "daily_nav")
+            
+            if safe_batch:
+                supabase.table("daily_nav").upsert(safe_batch, on_conflict="ticker,validity_date").execute()
+                print(f"   ✅ {len(safe_batch)} UBL funds updated (Priority, including Pensions!).")
             
     except Exception as e: 
         print(f"   ❌ UBL Error: {e}")
@@ -278,9 +341,9 @@ def sync_mufap_payouts():
                     except: continue
                     
         if batch:
+            # Reverted: No manual filter here because the key is 'payout_date', not 'validity_date'
             supabase.table("payout_history").upsert(batch, on_conflict="ticker,payout_date").execute()
-            print(f"   ✅ {len(batch)} Payouts synced.")
-    except Exception as e: print(f"   ❌ Payouts Error: {e}")
+            print(f"   ✅ {len(batch)} Payouts synced.")
 
 
 # --- TASK G: MUFAP TER ---
@@ -313,9 +376,9 @@ def sync_mufap_ter():
                     except: continue
                     
         if batch:
+            # Reverted: No manual filter here because performance_stats has no dates or source column
             supabase.table("performance_stats").upsert(batch, on_conflict="ticker").execute()
-            print(f"   ✅ {len(batch)} TER stats synced.")
-    except Exception as e: print(f"   ❌ TER Error: {e}")
+            print(f"   ✅ {len(batch)} TER stats synced.")
 
 # --- TASK: CRYPTO DAILY (Fast & Lean) ---
 def sync_crypto_rates():
@@ -340,7 +403,10 @@ def sync_crypto_rates():
                     })
         
         if batch:
-            supabase.table("benchmarks").upsert(batch, on_conflict="ticker,validity_date").execute()
+            safe_batch = filter_manual_entries(batch, "benchmarks")
+            
+            if safe_batch:
+                supabase.table("benchmarks").upsert(safe_batch, on_conflict="ticker,validity_date").execute()
             print(f"   ✅ {len(batch)} Recent Crypto rates synced.")
             
     except Exception as e: print(f"   ❌ Crypto Error: {e}")

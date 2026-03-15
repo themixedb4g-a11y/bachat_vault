@@ -203,7 +203,7 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
 }
 
 // ============================================================================
-// SIP CALCULATOR (UPDATED WITH DYNAMIC NEAREST-MATCH CAGR)
+// SIP CALCULATOR (UPDATED TO DEFAULT TO EQUITY)
 // ============================================================================
 class SipCalculator extends StatefulWidget {
   const SipCalculator({super.key});
@@ -222,8 +222,11 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
 
   bool _isLoadingFunds = true;
   List<Map<String, dynamic>> _allFunds = [];
-  List<String> _categories = ['All'];
-  String _selectedCategory = 'All';
+  
+  // 👉 NEW: Initialized with 'Equity' so the dropdown doesn't crash on the first frame
+  List<String> _categories = ['All', 'Equity'];
+  // 👉 NEW: Set default category to 'Equity'
+  String _selectedCategory = 'Equity';
   String? _selectedFundTicker;
 
   @override
@@ -236,7 +239,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     _fetchFundsData(); 
   }
 
-  // INCORPORATED: The full name shortener
   String _cleanFundName(String name) {
     return name
         .replaceAll('Exchange Traded Fund', 'ETF')
@@ -252,11 +254,11 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
         .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
+        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
+        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
@@ -356,6 +358,12 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
         setState(() {
           _allFunds = combined;
           _categories = ['All', ...catSet.toList()..sort()];
+          
+          // 👉 NEW: Safety check. If the DB somehow doesn't have an 'Equity' category, fallback to 'All'
+          if (!_categories.contains(_selectedCategory)) {
+            _selectedCategory = 'All';
+          }
+          
           _isLoadingFunds = false;
         });
       }
@@ -544,7 +552,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
                               value: _selectedFundTicker,
                               items: [
                                 const DropdownMenuItem(value: null, child: Text('Choose a fund...', style: TextStyle(color: Colors.white54))),
-                                // BUG FIXED HERE: Uses 'f' instead of 'fund', and applies the shortener perfectly.
                                 ...filteredFunds.map((f) => DropdownMenuItem(
                                   value: f['ticker'] as String, 
                                   child: Text(_cleanFundName(f['fund_name']?.toString() ?? 'Unknown'), overflow: TextOverflow.ellipsis, maxLines: 1)
