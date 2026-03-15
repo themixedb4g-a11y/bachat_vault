@@ -8,7 +8,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:bachat_vault/screens/compare_funds_screen.dart';
 import 'package:bachat_vault/screens/fund_details_screen.dart';
-import 'package:bachat_vault/screens/full_performance_screen.dart'; 
+import 'package:bachat_vault/screens/full_performance_screen.dart';
+import 'package:bachat_vault/screens/financial_journey_screen.dart';
+import 'package:bachat_vault/screens/mutual_funds_screen.dart';
+import 'package:bachat_vault/screens/pension_funds_screen.dart';
+import 'package:bachat_vault/screens/etfs_screen.dart';
+import 'package:bachat_vault/screens/overseas_investors_screen.dart';
+import 'package:bachat_vault/screens/account_opening_screen.dart';
+import 'package:bachat_vault/screens/terms_conditions_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -438,7 +445,89 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   ],
                 ),
               ),
-              _buildDrawerItem(Icons.menu_book_rounded, 'Investment Guide', () { }),
+              
+              // 1. THE NEW EXPANDABLE INVESTMENT GUIDE MENU
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  leading: const Icon(Icons.menu_book_rounded, color: Colors.tealAccent, size: 22),
+                  title: const Text('Investment Guide', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+                  iconColor: Colors.tealAccent,
+                  collapsedIconColor: Colors.tealAccent,
+                  childrenPadding: const EdgeInsets.only(left: 54, bottom: 8), // Indents the sub-items perfectly to align with the text
+                  children: [
+                    ListTile(
+  dense: true, visualDensity: VisualDensity.compact,
+  title: const Text('Your Financial Journey', style: TextStyle(color: Colors.white70, fontSize: 13)),
+  onTap: () {
+    // Closes the drawer first
+    Navigator.pop(context); 
+    // Navigates to the new screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const FinancialJourneyScreen()),
+    );
+  },
+),
+                    ListTile(
+  dense: true, visualDensity: VisualDensity.compact,
+  title: const Text('Mutual Funds', style: TextStyle(color: Colors.white70, fontSize: 13)),
+  onTap: () {
+    Navigator.pop(context); // Close the drawer
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const MutualFundsScreen()),
+    );
+  },
+),
+                    ListTile(
+  dense: true, visualDensity: VisualDensity.compact,
+  title: const Text('Pension Funds', style: TextStyle(color: Colors.white70, fontSize: 13)),
+  onTap: () {
+    Navigator.pop(context); // Close the drawer
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const PensionFundsScreen()),
+    );
+  },
+),
+                    ListTile(
+  dense: true, visualDensity: VisualDensity.compact,
+  title: const Text('Exchange Traded Funds', style: TextStyle(color: Colors.white70, fontSize: 13)),
+  onTap: () {
+    Navigator.pop(context); // Close the drawer
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const EtfsScreen()),
+    );
+  },
+),
+                    ListTile(
+  dense: true, visualDensity: VisualDensity.compact,
+  title: const Text('Overseas Investors', style: TextStyle(color: Colors.white70, fontSize: 13)),
+  onTap: () {
+    Navigator.pop(context); // Close the drawer
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const OverseasInvestorsScreen()),
+    );
+  },
+),
+                    ListTile(
+  dense: true, visualDensity: VisualDensity.compact,
+  title: const Text('Account Opening & Taxes', style: TextStyle(color: Colors.white70, fontSize: 13)),
+  onTap: () {
+    Navigator.pop(context); 
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AccountOpeningScreen()),
+    );
+  },
+),
+                  ],
+                ),
+              ),
+              
               const Divider(color: Colors.white12),
               Padding(padding: const EdgeInsets.only(left: 16, top: 16, bottom: 8), child: Text('COMMUNITIES', style: TextStyle(color: Colors.tealAccent.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2))),
               _buildDrawerItem(Icons.facebook_rounded, 'Facebook Page', () => _launchURL('https://www.facebook.com/MFInvestment')),
@@ -448,8 +537,29 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
               _buildDrawerItem(Icons.camera_alt_rounded, 'Instagram', () => _launchURL('https://www.instagram.com/mfi_pakistan/')),
               _buildDrawerItem(Icons.smart_display_rounded, 'YouTube Channel', () => _launchURL('https://www.youtube.com/@the_mixedb4g')),
               const Divider(color: Colors.white12),
+              
+              // 2. SETTINGS, T&C, AND THE NEW SUPPORT BUTTON
               _buildDrawerItem(Icons.settings_rounded, 'App Settings', () { }),
-              _buildDrawerItem(Icons.gavel_rounded, 'Terms & Conditions', () { }),
+              _buildDrawerItem(Icons.gavel_rounded, 'Terms & Conditions', () {
+  Navigator.pop(context); // Close the drawer
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (context) => const TermsConditionsScreen()),
+  );
+}),
+              
+              // New Feedback & Support Launcher
+              _buildDrawerItem(Icons.email_outlined, 'Feedback & Support', () async {
+                final Uri emailLaunchUri = Uri(
+                  scheme: 'mailto',
+                  path: 'themixedb4g@gmail.com', // 👉 CHANGE THIS TO YOUR GMAIL
+                  query: 'subject=Bachat Vault App Feedback', 
+                );
+                // Make sure to import 'package:url_launcher/url_launcher.dart'; at the top of your file!
+                launchUrl(emailLaunchUri);
+              }),
+              
+              const SizedBox(height: 24), // Gives a little breathing room at the bottom of the scroll
             ],
           ),
         ),
