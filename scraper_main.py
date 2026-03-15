@@ -293,6 +293,60 @@ def sync_crypto_rates():
             
     except Exception as e: print(f"   ❌ Crypto Error: {e}")
 
+import yfinance as yf
+import pandas as pd
+
+def temporary_backfill_crypto():
+    print("Starting temporary crypto historical backfill...")
+    tickers = {
+        'BTC-USD': 'BTC',
+        'ETH-USD': 'ETH',
+        'SOL-USD': 'SOL'
+    }
+
+    for yf_ticker, db_ticker in tickers.items():
+        print(f"Fetching max history for {db_ticker}...")
+        df = yf.download(yf_ticker, period="max")
+        
+        if df.empty:
+            print(f"⚠️ Warning: Could not fetch data for {yf_ticker}.")
+            continue
+            
+        df = df.reset_index()
+        
+        # Clean up yfinance multi-index columns if present
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        if 'index' in df.columns and 'Date' not in df.columns:
+            df.rename(columns={'index': 'Date'}, inplace=True)
+            
+        # Build the list of records to send to Supabase
+        records = []
+        for index, row in df.iterrows():
+            records.append({
+                'ticker': db_ticker,
+                'validity_date': pd.to_datetime(row['Date']).strftime('%Y-%m-%d'),
+                'value': round(float(row['Close']), 2),
+                'source': 'Yahoo Finance'
+            })
+        
+        # Supabase limits bulk inserts, so we push them in batches of 1000
+        batch_size = 1000
+        for i in range(0, len(records), batch_size):
+            batch = records[i:i+batch_size]
+            try:
+                # Assuming your client is named 'supabase' and the table is 'benchmarks'
+                supabase.table('benchmarks').upsert(batch).execute()
+                print(f"✅ Inserted batch {i//batch_size + 1} for {db_ticker}...")
+            except Exception as e:
+                print(f"❌ Error inserting {db_ticker} batch: {e}")
+                
+    print("🎉 Crypto backfill completely finished!")
+
+# --- TEMPORARY TRIGGER ---
+# Uncomment the line below, run the script ONCE, then delete this entire block!
+temporary_backfill_crypto()
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # NEW: Updated arguments to handle granular scheduling targets
