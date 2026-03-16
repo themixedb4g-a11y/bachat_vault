@@ -169,7 +169,7 @@ final List<GuideSection> _vpsSections = [
     icon: Icons.card_giftcard_rounded,
     content: 'Because this is a retirement fund, the government strictly regulates how and when you can take the money out.',
     bulletPoints: [
-      'Retirement Age: You can choose your retirement age anywhere between 60 and 70 years or or after 25 years of contribution.',
+      'Retirement Age: You can choose your retirement age anywhere between 60 and 70 years or after 25 years of first contribution.',
       'Tax-Free Lump Sum: At retirement, you can withdraw up to 50% of your total accumulated balance completely TAX-FREE.',
       'Income Payment Plan (IPP): The remaining 50% must be put into an IPP, which will pay you a monthly pension for the rest of your life.',
     ],

@@ -150,7 +150,7 @@ final List<GuideSection> _accountSections = [
     content: 'All these options are available online through websites or mobile apps, so you can start investing easily from anywhere!',
     bulletPoints: [
       'CDC\'s Asaan Connect: Complete your KYC and biometric verification just once. After that, you can open an account with any AMC, Broker, or Takaful provider without repeating documentation.',
-      'Emlaak or Behtari Platforms: Open a single account with these aggregator platforms and invest in ANY fund of ANY AMC through one dashboard.',
+      'Digital Platforms: Open a single account with any aggregator platform like Emlaak and invest in ANY fund of ANY AMC through one dashboard.',
       'Direct with AMC: Open an account directly with an individual Asset Management Company to invest specifically in their funds.',
     ],
   ),

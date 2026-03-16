@@ -148,7 +148,7 @@ final List<GuideSection> _guideSections = [
     icon: Icons.balance_outlined,
     content: 'In Pakistan, every category of mutual fund usually has two versions:',
     bulletPoints: [
-      'Conventional Funds: Invest in interest-bearing instruments (T-Bills, standard banks, commercial paper).',
+      'Conventional Funds: Invest in interest-bearing instruments (Stocks, T-Bills, standard banks, commercial paper).',
       'Islamic (Shariah-Compliant) Funds: Invest only in Riba-free instruments (Sukuks, Islamic banks, KMI-30 index stocks). These are audited by a Shariah Board.',
     ],
   ),
@@ -172,16 +172,6 @@ final List<GuideSection> _guideSections = [
       'TER (Total Expense Ratio): The annual fee the AMC charges to manage your money (usually 0.5% to 3%). It is already deducted from your daily NAV.',
       'Front-End Load: A small fee (usually 0% to 3%) deducted when you deposit money. *Tip: Many AMCs waive this if you invest online!*',
       'FMR (Fund Manager Report): A monthly PDF published by the AMC showing exactly where the fund is invested and its past performance.',
-    ],
-  ),
-  GuideSection(
-    title: 'How Profits are Taxed (CGT)',
-    icon: Icons.request_quote_outlined,
-    content: 'Profits made on mutual funds are subject to Capital Gains Tax (CGT) upon withdrawal. The rate depends on your Filer status with the FBR.',
-    bulletPoints: [
-      'Filers (ATL): Generally pay a lower CGT rate (e.g., 15%).',
-      'Non-Filers: Penalized with a significantly higher tax rate (e.g., 30%+).',
-      'Automatic Deduction: You do not need to manually pay this; the AMC automatically deducts CGT before sending the money to your bank account.',
     ],
   ),
 ];

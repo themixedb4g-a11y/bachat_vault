@@ -147,7 +147,7 @@ final List<GuideSection> _etfSections = [
     icon: Icons.compare_arrows_rounded,
     content: 'While they do similar things, there are three major differences between Mutual Funds and ETFs:',
     bulletPoints: [
-      'How to Buy: Mutual funds are bought via an AMC app. ETFs require a Stock Brokerage account (e.g., AKD, JS Global).',
+      'How to Buy: Mutual funds are bought via an AMC app. ETFs require a Stock Brokerage account.',
       'Lower Fees: ETFs usually have much lower Expense Ratios (TER) than Mutual Funds because they simply track an index rather than paying expensive fund managers to "beat" the market.',
       'No Front-End Load: ETFs have zero sales loads. You only pay the tiny standard broker commission when buying or selling.',
     ],
@@ -170,7 +170,6 @@ final List<GuideSection> _etfSections = [
       'Step 1: Open a brokerage account with a PSX-registered broker (Sahulat Accounts are great for beginners and can be opened online!).',
       'Step 2: Deposit funds into your brokerage account.',
       'Step 3: Search for the ETF ticker symbol (e.g., UBLP-ETF) during market hours and hit Buy.',
-      'Overseas Pakistanis: You can buy ETFs directly through the Roshan Equity Investment (REI) portal linked to your Roshan Digital Account.',
     ],
   ),
 ];

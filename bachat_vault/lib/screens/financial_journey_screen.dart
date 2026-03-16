@@ -169,7 +169,7 @@ final List<JourneyStep> _journeySteps = [
     bulletPoints: [
       'Needs (50%): Rent, groceries, utilities, and essential bills.',
       'Wants (30%): Dining out, entertainment, and hobbies.',
-      'Savings/Investments (20%+): Pay yourself first. This is the seed money for your future wealth.',
+      'Savings (20%+): Pay yourself first. This is the seed money for your future wealth.',
     ],
   ),
   JourneyStep(
@@ -177,8 +177,8 @@ final List<JourneyStep> _journeySteps = [
     description: 'Do not invest in the stock market until you have a safety net. Markets go up and down, and you don\'t want to be forced to sell your investments at a loss because of an emergency.',
     icon: Icons.shield_outlined,
     bulletPoints: [
-      'Emergency Fund: Save 3 to 6 months of living expenses in a highly liquid, secure account (like a Money Market Fund or Savings Account).',
-      'Insurance/Takaful: Secure Health and Life insurance to protect yourself and your dependents from sudden medical or financial shocks.',
+      'Emergency Fund: Save 3 to 6 months of living expenses (Needs) in a highly liquid, secure account (like a Money Market Fund or Savings Account).',
+      'Insurance/Takaful: Secure Health and Life insurance/Takaful to protect yourself and your dependents from sudden medical or financial shocks.',
     ],
   ),
   JourneyStep(
@@ -214,7 +214,7 @@ final List<JourneyStep> _journeySteps = [
     bulletPoints: [
       'Direct with AMC (Asset Management Company): Open an account directly through the AMC\'s website or app.',
       'Digital Platforms: Use aggregate platforms like Emlaak Financials (SECP Owned) or other distributors for easy access to multiple AMCs.',
-      'CDC Account: Open an account with the Central Depository Company and link it to your AMCs.',
+      'CDC Account: Open an account with the Central Depository Company (CDC) and link it to any AMC.',
     ],
   ),
   JourneyStep(

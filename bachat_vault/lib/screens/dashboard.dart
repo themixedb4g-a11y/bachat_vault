@@ -374,7 +374,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
 
   Widget _buildMarketOverviewSection(String periodLabel, String dbKey) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -438,9 +438,9 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Image.asset('assets/app_icon_transparent.png', width: 64, height: 64, errorBuilder: (c,e,s) => const Icon(Icons.account_balance_wallet, color: Colors.tealAccent, size: 48)),
+                    Image.asset('assets/app_icon_transparent.png', width: 72, height: 72, errorBuilder: (c,e,s) => const Icon(Icons.account_balance_wallet, color: Colors.tealAccent, size: 48)),
                     const SizedBox(height: 12),
-                    const Text('Bachat Vault', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                    const Text('Bachat Vault', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     const Text('Version 1.0.0', style: TextStyle(color: Colors.white54, fontSize: 12)),
                   ],
                 ),
@@ -537,15 +537,16 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
               _buildDrawerItem(Icons.camera_alt_rounded, 'Instagram', () => _launchURL('https://www.instagram.com/mfi_pakistan/')),
               _buildDrawerItem(Icons.smart_display_rounded, 'YouTube Channel', () => _launchURL('https://www.youtube.com/@the_mixedb4g')),
               const Divider(color: Colors.white12),
-              
-              // 2. SETTINGS, T&C, AND THE NEW SUPPORT BUTTON
-              _buildDrawerItem(Icons.settings_rounded, 'App Settings', () { }),
               _buildDrawerItem(Icons.gavel_rounded, 'Terms & Conditions', () {
   Navigator.pop(context); // Close the drawer
   Navigator.push(
     context,
     MaterialPageRoute(builder: (context) => const TermsConditionsScreen()),
   );
+}),
+              _buildDrawerItem(Icons.security_rounded, 'Privacy Policy', () {
+  // Replace this URL with your actual Google Sites link!
+  launchUrl(Uri.parse('https://sites.google.com/view/bachatvault-privacy'));
 }),
               
               // New Feedback & Support Launcher
@@ -582,7 +583,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 16),
                             const Center(child: Text('Your Investment Value', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500))),
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
@@ -595,13 +596,13 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 4),
                             
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [_buildDashFilterBtn('30D'), const SizedBox(width: 12), _buildDashFilterBtn('1Y'), const SizedBox(width: 12), _buildDashFilterBtn('3Y')],
                             ),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 8),
                             
                             SizedBox(
                               // Perfectly balanced height to fit 5 cards without overflow OR massive gaps!
@@ -616,7 +617,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 0),
 
                             _buildMarketOverviewSection(_selectedDashboardPeriod, dbSortKey),
                             const SizedBox(height: 24),
