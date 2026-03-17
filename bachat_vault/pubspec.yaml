@@ -24,6 +24,7 @@ dev_dependencies:
   # Added these two for Phase 3!
   flutter_launcher_icons: ^0.13.1
   flutter_native_splash: ^2.4.0
+  change_app_package_name: ^1.5.0
 
 flutter:
   uses-material-design: true
