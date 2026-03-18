@@ -24,17 +24,24 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAliveClientMixin {
+class _DashboardScreenState extends State<DashboardScreen>
+    with AutomaticKeepAliveClientMixin {
   final SupabaseClient supabase = Supabase.instance.client;
-  
+
   bool _isLoading = true;
   String? _errorMessage;
   List<Map<String, dynamic>> _allFunds = [];
-  Map<String, dynamic> _benchmarkStats = {}; 
-  
+  final Map<String, dynamic> _benchmarkStats = {};
+
   double _investmentAmount = 100000.0;
-  final TextEditingController _investmentController = TextEditingController(text: '1,00,000');
-  final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
+  final TextEditingController _investmentController = TextEditingController(
+    text: '1,00,000',
+  );
+  final NumberFormat _currencyFormat = NumberFormat.currency(
+    locale: 'en_IN',
+    symbol: '',
+    decimalDigits: 0,
+  );
   final PageController _pageController = PageController(viewportFraction: 0.92);
 
   String _selectedDashboardPeriod = '1Y';
@@ -60,63 +67,117 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not launch $urlString'), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text('Could not launch $urlString'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     }
   }
 
   Future<void> _fetchData() async {
-    setState(() { _isLoading = true; _errorMessage = null; });
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     final Map<String, String> categoryMap = {
-      'Equity': 'Equity', 'Shariah Compliant Equity': 'Equity',
-      'Money Market': 'Money Market', 'Shariah Compliant Money Market': 'Money Market',
-      'Income': 'Income', 'Shariah Compliant Income': 'Income',
-      'Capital Protected': 'Capital Protected', 'Shariah Compliant Capital Protected': 'Capital Protected',
+      'Equity': 'Equity',
+      'Shariah Compliant Equity': 'Equity',
+      'Money Market': 'Money Market',
+      'Shariah Compliant Money Market': 'Money Market',
+      'Income': 'Income',
+      'Shariah Compliant Income': 'Income',
+      'Capital Protected': 'Capital Protected',
+      'Shariah Compliant Capital Protected': 'Capital Protected',
       'Capital Protected - Income': 'Capital Protected - Income',
-      'Aggressive Fixed Income': 'Aggressive Fixed Income', 'Shariah Compliant Aggressive Fixed Income': 'Aggressive Fixed Income',
-      'Balanced': 'Balanced', 'Shariah Compliant Balanced': 'Balanced',
-      'Asset Allocation': 'Asset Allocation', 'Shariah Compliant Asset Allocation': 'Asset Allocation',
-      'Fund of Funds': 'Fund of Funds', 'Shariah Compliant Fund of Funds': 'Fund of Funds', 'Shariah Compliant Fund of Funds - CPPI': 'Fund of Funds',
-      'Index Tracker': 'Index Tracker', 'Shariah Compliant Index Tracker': 'Index Tracker', 'Index': 'Index',
+      'Aggressive Fixed Income': 'Aggressive Fixed Income',
+      'Shariah Compliant Aggressive Fixed Income': 'Aggressive Fixed Income',
+      'Balanced': 'Balanced',
+      'Shariah Compliant Balanced': 'Balanced',
+      'Asset Allocation': 'Asset Allocation',
+      'Shariah Compliant Asset Allocation': 'Asset Allocation',
+      'Fund of Funds': 'Fund of Funds',
+      'Shariah Compliant Fund of Funds': 'Fund of Funds',
+      'Shariah Compliant Fund of Funds - CPPI': 'Fund of Funds',
+      'Index Tracker': 'Index Tracker',
+      'Shariah Compliant Index Tracker': 'Index Tracker',
+      'Index': 'Index',
       'Shariah Compliant Commodities': 'Commodities',
-      'Exchange Traded Fund': 'Exchange Traded Fund', 'Shariah Compliant Exchange Traded Fund': 'Exchange Traded Fund',
-      'VPS-Money Market': 'VPS-Money Market', 'VPS-Shariah Compliant Money Market': 'VPS-Money Market',
-      'VPS-Debt': 'VPS-Debt', 'VPS-Shariah Compliant Debt': 'VPS-Debt',
-      'VPS-Commodities / Gold': 'VPS-Commodities', 'VPS-Shariah Compliant Commodities / Gold': 'VPS-Commodities',
-      'VPS-Equity': 'VPS-Equity', 'VPS-Shariah Compliant Equity': 'VPS-Equity',
-      'Dedicated Equity': 'Dedicated Equity', 'Shariah Compliant Dedicated Equity': 'Dedicated Equity',
+      'Exchange Traded Fund': 'Exchange Traded Fund',
+      'Shariah Compliant Exchange Traded Fund': 'Exchange Traded Fund',
+      'VPS-Money Market': 'VPS-Money Market',
+      'VPS-Shariah Compliant Money Market': 'VPS-Money Market',
+      'VPS-Debt': 'VPS-Debt',
+      'VPS-Shariah Compliant Debt': 'VPS-Debt',
+      'VPS-Commodities / Gold': 'VPS-Commodities',
+      'VPS-Shariah Compliant Commodities / Gold': 'VPS-Commodities',
+      'VPS-Equity': 'VPS-Equity',
+      'VPS-Shariah Compliant Equity': 'VPS-Equity',
+      'Dedicated Equity': 'Dedicated Equity',
+      'Shariah Compliant Dedicated Equity': 'Dedicated Equity',
     };
 
     final Map<String, String> amcMap = {
-      '786 Investments Limited': '786 Investments', 'ABL Asset Management Company Limited': 'ABL Funds',
-      'AKD Investment Management Limited': 'AKD Investment Management', 'Al Habib Asset Management Limited': 'Al Habib Asset Management',
-      'Al Meezan Investment Management Limited': 'Al Meezan Investments', 'Alfalah Asset Management Limited': 'Alfalah Asset Management',
-      'Atlas Asset Management Limited': 'Atlas Asset Management', 'AWT Investments Limited': 'AWT Investments',
-      'Faysal Asset Management Limited': 'Faysal Funds', 'First Capital Investments Limited': 'First Capital Investments',
-      'HBL Asset Management Limited': 'HBL Asset Management', 'JS Investments Limited': 'JS Investments',
-      'Lakson Investments Limited': 'Lakson Investments', 'Lucky Investments Limited': 'Lucky Investments',
-      'Mahaana Wealth Limited': 'Mahaana Wealth', 'MCB Investment Management Limited': 'MCB Funds',
-      'National Investment Trust Limited': 'National Investment Trust', 'NBP Fund Management Limited': 'NBP Funds',
-      'Pak Oman Asset Management Company Limited': 'Pak Oman Asset Management', 'Pak-Qatar Asset Management Company Limited': 'Pak Qatar Asset Management', 'EFU Life Insurance Limited': 'EFU Life Insurance',
+      '786 Investments Limited': '786 Investments',
+      'ABL Asset Management Company Limited': 'ABL Funds',
+      'AKD Investment Management Limited': 'AKD Investment Management',
+      'Al Habib Asset Management Limited': 'Al Habib Asset Management',
+      'Al Meezan Investment Management Limited': 'Al Meezan Investments',
+      'Alfalah Asset Management Limited': 'Alfalah Asset Management',
+      'Atlas Asset Management Limited': 'Atlas Asset Management',
+      'AWT Investments Limited': 'AWT Investments',
+      'Faysal Asset Management Limited': 'Faysal Funds',
+      'First Capital Investments Limited': 'First Capital Investments',
+      'HBL Asset Management Limited': 'HBL Asset Management',
+      'JS Investments Limited': 'JS Investments',
+      'Lakson Investments Limited': 'Lakson Investments',
+      'Lucky Investments Limited': 'Lucky Investments',
+      'Mahaana Wealth Limited': 'Mahaana Wealth',
+      'MCB Investment Management Limited': 'MCB Funds',
+      'National Investment Trust Limited': 'National Investment Trust',
+      'NBP Fund Management Limited': 'NBP Funds',
+      'Pak Oman Asset Management Company Limited': 'Pak Oman Asset Management',
+      'Pak-Qatar Asset Management Company Limited':
+          'Pak Qatar Asset Management',
+      'EFU Life Insurance Limited': 'EFU Life Insurance',
       'UBL Fund Managers Limited': 'UBL Funds',
     };
 
     try {
       final masterResponse = await supabase.from('master_funds').select();
-      final statsResponse = await supabase.from('performance_stats').select('ticker, return_1d, return_30d, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y, ter_mtd, ter_ytd, last_validity_date');
+      final statsResponse = await supabase
+          .from('performance_stats')
+          .select(
+            'ticker, return_1d, return_mtd, return_30d, return_fytd, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y, ter_mtd, ter_ytd, last_validity_date',
+          );
 
-      _benchmarkStats['KSE100'] = statsResponse.firstWhere((s) => s['ticker'] == 'KSE100', orElse: () => <String, dynamic>{});
-      _benchmarkStats['KMI30'] = statsResponse.firstWhere((s) => s['ticker'] == 'KMI30', orElse: () => <String, dynamic>{});
-      _benchmarkStats['GOLD_24K'] = statsResponse.firstWhere((s) => s['ticker'] == 'GOLD_24K', orElse: () => <String, dynamic>{});
-      _benchmarkStats['CPI_PK'] = statsResponse.firstWhere((s) => s['ticker'] == 'CPI_PK', orElse: () => <String, dynamic>{});
+      _benchmarkStats['KSE100'] = statsResponse.firstWhere(
+        (s) => s['ticker'] == 'KSE100',
+        orElse: () => <String, dynamic>{},
+      );
+      _benchmarkStats['KMI30'] = statsResponse.firstWhere(
+        (s) => s['ticker'] == 'KMI30',
+        orElse: () => <String, dynamic>{},
+      );
+      _benchmarkStats['GOLD_24K'] = statsResponse.firstWhere(
+        (s) => s['ticker'] == 'GOLD_24K',
+        orElse: () => <String, dynamic>{},
+      );
+      _benchmarkStats['CPI_PK'] = statsResponse.firstWhere(
+        (s) => s['ticker'] == 'CPI_PK',
+        orElse: () => <String, dynamic>{},
+      );
 
       final List<Map<String, dynamic>> combined = [];
 
       for (var mf in masterResponse) {
         final ticker = mf['ticker'];
-        final stats = statsResponse.firstWhere((s) => s['ticker'] == ticker, orElse: () => <String, dynamic>{});
+        final stats = statsResponse.firstWhere(
+          (s) => s['ticker'] == ticker,
+          orElse: () => <String, dynamic>{},
+        );
 
         final rawCat = mf['category']?.toString().trim() ?? '';
         final rawAmc = mf['amc_name']?.toString().trim() ?? '';
@@ -125,15 +186,31 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
           ...mf,
           'category': categoryMap[rawCat] ?? rawCat,
           'amc_name': amcMap[rawAmc] ?? rawAmc,
-          'return_1d': stats['return_1d'], 'return_30d': stats['return_30d'], 'return_1y': stats['return_1y'],
-          'return_3y': stats['return_3y'], 'return_5y': stats['return_5y'], 'return_10y': stats['return_10y'],
-          'return_15y': stats['return_15y'], 'return_20y': stats['return_20y'],
-          'ter_mtd': stats['ter_mtd'], 'ter_ytd': stats['ter_ytd'], 'last_validity_date': stats['last_validity_date'],
+          'return_1d': stats['return_1d'],
+          'return_mtd': stats['return_mtd'],
+          'return_30d': stats['return_30d'],
+          'return_fytd': stats['return_fytd'],
+          'return_1y': stats['return_1y'],
+          'return_3y': stats['return_3y'],
+          'return_5y': stats['return_5y'],
+          'return_10y': stats['return_10y'],
+          'return_15y': stats['return_15y'],
+          'return_20y': stats['return_20y'],
+          'ter_mtd': stats['ter_mtd'],
+          'ter_ytd': stats['ter_ytd'],
+          'last_validity_date': stats['last_validity_date'],
         });
       }
-      setState(() { _allFunds = combined; _isLoading = false; });
+      setState(() {
+        _allFunds = combined;
+        _isLoading = false;
+      });
     } catch (e) {
-      if (mounted) setState(() { _errorMessage = e.toString(); _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _errorMessage = e.toString();
+          _isLoading = false;
+        });
     }
   }
 
@@ -156,72 +233,250 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   String _cleanFundName(String name) {
     return name
         .replaceAll('Exchange Traded Fund', 'ETF')
-        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan I)', 'NBP Islamic Principal Protection Plan I')
-        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan II)', 'NBP Islamic Principal Protection Plan II')
-        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan III)', 'NBP Islamic Principal Protection Plan III')
-        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan IV)', 'NBP Islamic Principal Protection Plan IV')
-        .replaceAll('Pak-Qatar Asset Allocation Plan I (PQAAP  IA)', 'Pak Qatar Asset Allocation Plan I')
-        .replaceAll('Pak-Qatar Asset Allocation Plan II (PQAAP  IIA)', 'Pak Qatar Asset Allocation Plan II')
-        .replaceAll('Pak-Qatar Asset Allocation Plan III (PQAAP  IIIA)', 'Pak Qatar Asset Allocation Plan III')
-        .replaceAll('Alhamra Opportunity Fund (Dividend Strategy Plan)', 'Alhamra Opportunity Fund')
-        .replaceAll('MCB Pakistan Opportunity Fund (MCB Pakistan  Dividend Yield Plan)', 'MCB Pakistan Opportunity Fund')
-        .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
-        .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
-        .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
-        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
-        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
-        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
-        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
-        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
-        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
-        .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan I)', 'Faysal Islamic Financial Growth Plan I')
-        .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan II)', 'Faysal Islamic Financial Growth Plan II')
-        .replaceAll('Atlas Islamic Fund of Funds (Atlas Aggressive Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Aggressive)')
-        .replaceAll('Atlas Islamic Fund of Funds (Atlas Conservative Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Conservative)')
-        .replaceAll('Atlas Islamic Fund of Funds (Atlas Moderate Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Moderate)')
-        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Moderate Allocation Plan)', 'Alfalah GHP IPP Fund (Moderate)')
-        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Active Allocation Plan II)', 'Alfalah GHP IPP Fund (Active)')
-        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Balance Allocation Plan)', 'Alfalah GHP IPP Fund (Balance)')
-        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Active Allocation Plan)', 'Alfalah GHP PP Fund (Active)')
-        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Conservative Allocation Plan)', 'Alfalah GHP PP Fund (Conservative)')
-        .replaceAll('Alfalah GHP Prosperity Planning Fund (Capital Preservation Plan IV)', 'Alfalah GHP PP Fund (Capital Preservation Plan IV)')
-        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Moderate Allocation Plan)', 'Alfalah GHP PP Fund (Moderate)')
-        .replaceAll('Alfalah Financial Value Fund (Alfalah Financial Value Plan I)', 'Alfalah Financial Value Plan I')
-        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan I)', 'Alfalah Islamic Sovereign Plan I')
-        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan II)', 'Alfalah Islamic Sovereign Plan II')
-        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan III)', 'Alfalah Islamic Sovereign Plan III')
-        .replaceAll('Meezan Financial Planning Fund of Funds (Very Conservative Allocation Plan)', 'Meezan FP Fund of Funds (Very Conservative)')
-        .replaceAll('Meezan Financial Planning Fund of Funds (Moderate)', 'Meezan FP Fund of Funds (Moderate)')
-        .replaceAll('Meezan Financial Planning Fund of Funds (Conservative)', 'Meezan FP Fund of Funds (Conservative)')
-        .replaceAll('Meezan Financial Planning Fund of Funds (MAAP I)', 'Meezan FP Fund of Funds (Conservative)')
-        .replaceAll('Meezan Financial Planning Fund of Funds (Aggressive)', 'Meezan FP Fund of Funds (Aggressive)')
-        .replaceAll('Meezan Dynamic Asset Allocation Fund (Meezan Dividend Yield Plan)', 'Meezan Dynamic Asset Allocation Fund')
-        .replaceAll('Meezan Daily Income Fund (Meezan Mahana Munafa Plan)', 'Meezan Mahana Munafa Plan')
-        .replaceAll('Meezan Daily Income Fund (Meezan Munafa Plan I)', 'Meezan Munafa Plan I')
-        .replaceAll('Meezan Daily Income Fund (Meezan Sehl Account Plan) (MSHP)', 'Meezan Sehl Account Plan')
-        .replaceAll('Meezan Daily Income Fund (Meezan Super Saver Plan) (MSSP)', 'Meezan Super Saver Plan')
-        .replaceAll('ABL Islamic Financial Planning Fund (Conservative Allocation Plan)', 'ABL Islamic FP Fund (Conservative)')
-        .replaceAll('ABL Financial Planning Fund (Strategic Allocation Plan)', 'ABL FP Fund (Strategic Allocation Plan)')
-        .replaceAll('ABL Financial Planning Fund (Conservative Plan)', 'ABL Islamic FP Fund (Conservative)')
-        .replaceAll('ABL Islamic Financial Planning Fund (Active Allocation Plan)', 'ABL Islamic FP Fund (Active)')
-        .replaceAll('ABL Islamic Financial Planning Fund (Capital Preservation Plan I)', 'ABL Islamic FP Fund (Capital Preservation Plan I)')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan I)', 'ABL Special Saving Plan I')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan II)', 'ABL Special Saving Plan II')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan III)', 'ABL Special Saving Plan III')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan IV)', 'ABL Special Saving Plan IV')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan V)', 'ABL Special Saving Plan V')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan VI)', 'ABL Special Saving Plan VI')
+        .replaceAll(
+          'NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan I)',
+          'NBP Islamic Principal Protection Plan I',
+        )
+        .replaceAll(
+          'NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan II)',
+          'NBP Islamic Principal Protection Plan II',
+        )
+        .replaceAll(
+          'NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan III)',
+          'NBP Islamic Principal Protection Plan III',
+        )
+        .replaceAll(
+          'NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan IV)',
+          'NBP Islamic Principal Protection Plan IV',
+        )
+        .replaceAll(
+          'Pak-Qatar Asset Allocation Plan I (PQAAP  IA)',
+          'Pak Qatar Asset Allocation Plan I',
+        )
+        .replaceAll(
+          'Pak-Qatar Asset Allocation Plan II (PQAAP  IIA)',
+          'Pak Qatar Asset Allocation Plan II',
+        )
+        .replaceAll(
+          'Pak-Qatar Asset Allocation Plan III (PQAAP  IIIA)',
+          'Pak Qatar Asset Allocation Plan III',
+        )
+        .replaceAll(
+          'Alhamra Opportunity Fund (Dividend Strategy Plan)',
+          'Alhamra Opportunity Fund',
+        )
+        .replaceAll(
+          'MCB Pakistan Opportunity Fund (MCB Pakistan  Dividend Yield Plan)',
+          'MCB Pakistan Opportunity Fund',
+        )
+        .replaceAll(
+          'JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)',
+          'JS Islamic Sarmaya Mehfooz Plan I',
+        )
+        .replaceAll(
+          'Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)',
+          'Faysal Islamic Sovereign Plan I',
+        )
+        .replaceAll(
+          'Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)',
+          'Faysal Islamic Sovereign Plan II',
+        )
+        .replaceAll(
+          'Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)',
+          'Faysal Nuumah Women Savers Plan',
+        )
+        .replaceAll(
+          'Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)',
+          'Faysal Priority Ascend Plan I',
+        )
+        .replaceAll(
+          'Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)',
+          'Faysal Priority Ascend Plan II',
+        )
+        .replaceAll(
+          'Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)',
+          'Faysal Priority Ascend Plan III',
+        )
+        .replaceAll(
+          'Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)',
+          'Faysal Barakaah Women Savers Plan',
+        )
+        .replaceAll(
+          'Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)',
+          'Faysal Shariah Flex Plan I',
+        )
+        .replaceAll(
+          'Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)',
+          'Faysal Shariah Flex Plan II',
+        )
+        .replaceAll(
+          'Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)',
+          'Faysal Shariah Flex Plan III',
+        )
+        .replaceAll(
+          'Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan I)',
+          'Faysal Islamic Financial Growth Plan I',
+        )
+        .replaceAll(
+          'Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan II)',
+          'Faysal Islamic Financial Growth Plan II',
+        )
+        .replaceAll(
+          'Atlas Islamic Fund of Funds (Atlas Aggressive Allocation Islamic Plan)',
+          'Atlas Islamic Fund of Funds (Aggressive)',
+        )
+        .replaceAll(
+          'Atlas Islamic Fund of Funds (Atlas Conservative Allocation Islamic Plan)',
+          'Atlas Islamic Fund of Funds (Conservative)',
+        )
+        .replaceAll(
+          'Atlas Islamic Fund of Funds (Atlas Moderate Allocation Islamic Plan)',
+          'Atlas Islamic Fund of Funds (Moderate)',
+        )
+        .replaceAll(
+          'Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Moderate Allocation Plan)',
+          'Alfalah GHP IPP Fund (Moderate)',
+        )
+        .replaceAll(
+          'Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Active Allocation Plan II)',
+          'Alfalah GHP IPP Fund (Active)',
+        )
+        .replaceAll(
+          'Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Balance Allocation Plan)',
+          'Alfalah GHP IPP Fund (Balance)',
+        )
+        .replaceAll(
+          'Alfalah GHP Prosperity Planning Fund (Alfalah GHP Active Allocation Plan)',
+          'Alfalah GHP PP Fund (Active)',
+        )
+        .replaceAll(
+          'Alfalah GHP Prosperity Planning Fund (Alfalah GHP Conservative Allocation Plan)',
+          'Alfalah GHP PP Fund (Conservative)',
+        )
+        .replaceAll(
+          'Alfalah GHP Prosperity Planning Fund (Capital Preservation Plan IV)',
+          'Alfalah GHP PP Fund (Capital Preservation Plan IV)',
+        )
+        .replaceAll(
+          'Alfalah GHP Prosperity Planning Fund (Alfalah GHP Moderate Allocation Plan)',
+          'Alfalah GHP PP Fund (Moderate)',
+        )
+        .replaceAll(
+          'Alfalah Financial Value Fund (Alfalah Financial Value Plan I)',
+          'Alfalah Financial Value Plan I',
+        )
+        .replaceAll(
+          'Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan I)',
+          'Alfalah Islamic Sovereign Plan I',
+        )
+        .replaceAll(
+          'Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan II)',
+          'Alfalah Islamic Sovereign Plan II',
+        )
+        .replaceAll(
+          'Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan III)',
+          'Alfalah Islamic Sovereign Plan III',
+        )
+        .replaceAll(
+          'Meezan Financial Planning Fund of Funds (Very Conservative Allocation Plan)',
+          'Meezan FP Fund of Funds (Very Conservative)',
+        )
+        .replaceAll(
+          'Meezan Financial Planning Fund of Funds (Moderate)',
+          'Meezan FP Fund of Funds (Moderate)',
+        )
+        .replaceAll(
+          'Meezan Financial Planning Fund of Funds (Conservative)',
+          'Meezan FP Fund of Funds (Conservative)',
+        )
+        .replaceAll(
+          'Meezan Financial Planning Fund of Funds (MAAP I)',
+          'Meezan FP Fund of Funds (Conservative)',
+        )
+        .replaceAll(
+          'Meezan Financial Planning Fund of Funds (Aggressive)',
+          'Meezan FP Fund of Funds (Aggressive)',
+        )
+        .replaceAll(
+          'Meezan Dynamic Asset Allocation Fund (Meezan Dividend Yield Plan)',
+          'Meezan Dynamic Asset Allocation Fund',
+        )
+        .replaceAll(
+          'Meezan Daily Income Fund (Meezan Mahana Munafa Plan)',
+          'Meezan Mahana Munafa Plan',
+        )
+        .replaceAll(
+          'Meezan Daily Income Fund (Meezan Munafa Plan I)',
+          'Meezan Munafa Plan I',
+        )
+        .replaceAll(
+          'Meezan Daily Income Fund (Meezan Sehl Account Plan) (MSHP)',
+          'Meezan Sehl Account Plan',
+        )
+        .replaceAll(
+          'Meezan Daily Income Fund (Meezan Super Saver Plan) (MSSP)',
+          'Meezan Super Saver Plan',
+        )
+        .replaceAll(
+          'ABL Islamic Financial Planning Fund (Conservative Allocation Plan)',
+          'ABL Islamic FP Fund (Conservative)',
+        )
+        .replaceAll(
+          'ABL Financial Planning Fund (Strategic Allocation Plan)',
+          'ABL FP Fund (Strategic Allocation Plan)',
+        )
+        .replaceAll(
+          'ABL Financial Planning Fund (Conservative Plan)',
+          'ABL Islamic FP Fund (Conservative)',
+        )
+        .replaceAll(
+          'ABL Islamic Financial Planning Fund (Active Allocation Plan)',
+          'ABL Islamic FP Fund (Active)',
+        )
+        .replaceAll(
+          'ABL Islamic Financial Planning Fund (Capital Preservation Plan I)',
+          'ABL Islamic FP Fund (Capital Preservation Plan I)',
+        )
+        .replaceAll(
+          'ABL Special Saving Fund (ABL Special Saving Plan I)',
+          'ABL Special Saving Plan I',
+        )
+        .replaceAll(
+          'ABL Special Saving Fund (ABL Special Saving Plan II)',
+          'ABL Special Saving Plan II',
+        )
+        .replaceAll(
+          'ABL Special Saving Fund (ABL Special Saving Plan III)',
+          'ABL Special Saving Plan III',
+        )
+        .replaceAll(
+          'ABL Special Saving Fund (ABL Special Saving Plan IV)',
+          'ABL Special Saving Plan IV',
+        )
+        .replaceAll(
+          'ABL Special Saving Fund (ABL Special Saving Plan V)',
+          'ABL Special Saving Plan V',
+        )
+        .replaceAll(
+          'ABL Special Saving Fund (ABL Special Saving Plan VI)',
+          'ABL Special Saving Plan VI',
+        )
         .replaceAll('Government', 'Govt.')
         .trim();
   }
 
-  List<Map<String, dynamic>> _getTop5Funds(List<String> categories, String sortKey) {
+  List<Map<String, dynamic>> _getTop5Funds(
+    List<String> categories,
+    String sortKey,
+  ) {
     var filtered = _allFunds.where((f) {
       final cat = f['category']?.toString().trim() ?? '';
-      return categories.contains(cat) && f[sortKey] != null;
+      final ticker = f['ticker']?.toString().trim() ?? ''; // ADDED: Grab the ticker
+      
+      // ADDED: && ticker != 'HBLTETF' so it is completely excluded from Top 5 rankings
+      return categories.contains(cat) && f[sortKey] != null && ticker != 'HBLTETF';
     }).toList();
+    
     if (filtered.isEmpty) return [];
 
     String latestDateStr = "";
@@ -230,7 +485,9 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
       if (d.compareTo(latestDateStr) > 0) latestDateStr = d;
     }
 
-    filtered = filtered.where((f) => f['last_validity_date']?.toString() == latestDateStr).toList();
+    filtered = filtered
+        .where((f) => f['last_validity_date']?.toString() == latestDateStr)
+        .toList();
     filtered.sort((a, b) {
       final valA = (a[sortKey] as num).toDouble();
       final valB = (b[sortKey] as num).toDouble();
@@ -247,11 +504,24 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.tealAccent.withOpacity(0.2) : Colors.transparent,
+          color: isSelected
+              ? Colors.tealAccent.withOpacity(0.2)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isSelected ? Colors.tealAccent : Colors.white.withOpacity(0.2)),
+          border: Border.all(
+            color: isSelected
+                ? Colors.tealAccent
+                : Colors.white.withOpacity(0.2),
+          ),
         ),
-        child: Text(label, style: TextStyle(color: isSelected ? Colors.tealAccent : Colors.white70, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500, fontSize: 13)),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.tealAccent : Colors.white70,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+            fontSize: 13,
+          ),
+        ),
       ),
     );
   }
@@ -265,50 +535,121 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05), 
-          borderRadius: BorderRadius.circular(24), 
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white.withOpacity(0.1)),
-          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.tealAccent.withOpacity(0.1), Colors.transparent]),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.tealAccent.withOpacity(0.1), Colors.transparent],
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(title, style: const TextStyle(color: Colors.tealAccent, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.tealAccent,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
+            ),
             const SizedBox(height: 16),
             if (topFunds.isEmpty)
-              const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: Text("No funds available.", style: TextStyle(color: Colors.white54))))
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    "No funds available.",
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                ),
+              )
             else
               ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: topFunds.length,
-                separatorBuilder: (context, index) => const Divider(color: Colors.white12, height: 24),
+                separatorBuilder: (context, index) =>
+                    const Divider(color: Colors.white12, height: 24),
                 itemBuilder: (context, index) {
                   final fund = topFunds[index];
                   final name = _cleanFundName(fund['fund_name'] ?? 'Unknown');
-                  final isShariah = (fund['is_shariah'] == 1 || fund['is_shariah'] == '1' || fund['is_shariah'] == true);
-                  final dateStr = fund['last_validity_date'] != null ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(fund['last_validity_date'].toString()) ?? DateTime.now()) : 'N/A';
-                  
+                  final isShariah =
+                      (fund['is_shariah'] == 1 ||
+                      fund['is_shariah'] == '1' ||
+                      fund['is_shariah'] == true);
+                  final dateStr = fund['last_validity_date'] != null
+                      ? DateFormat('dd MMM yyyy').format(
+                          DateTime.tryParse(
+                                fund['last_validity_date'].toString(),
+                              ) ??
+                              DateTime.now(),
+                        )
+                      : 'N/A';
+
                   final returnFactor = (fund[sortKey] as num).toDouble();
-                  final double profitValue = _investmentAmount * (returnFactor - 1.0);
-                  
-                  String profitString = _currencyFormat.format(profitValue.abs());
-                  String displayProfit = profitValue >= 0 ? '+$profitString' : '-$profitString';
-                  Color profitColor = profitValue >= 0 ? Colors.greenAccent : Colors.redAccent.shade100;
+                  final double profitValue =
+                      _investmentAmount * (returnFactor - 1.0);
+
+                  String profitString = _currencyFormat.format(
+                    profitValue.abs(),
+                  );
+                  String displayProfit = profitValue >= 0
+                      ? '+$profitString'
+                      : '-$profitString';
+                  Color profitColor = profitValue >= 0
+                      ? Colors.greenAccent
+                      : Colors.redAccent.shade100;
 
                   return InkWell(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FundDetailsScreen(fund: fund, investmentAmount: _investmentAmount, benchmarkStats: _benchmarkStats))),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => FundDetailsScreen(
+                          fund: fund,
+                          investmentAmount: _investmentAmount,
+                          benchmarkStats: _benchmarkStats,
+                        ),
+                      ),
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Expanded(child: Text('$name${isShariah ? " 🕌" : ""}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
+                        Expanded(
+                          child: Text(
+                            '$name${isShariah ? " 🕌" : ""}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                         const SizedBox(width: 12),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text(displayProfit, style: TextStyle(color: profitColor, fontSize: 14, fontWeight: FontWeight.bold)),
-                            Text(dateStr, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                            Text(
+                              displayProfit,
+                              style: TextStyle(
+                                color: profitColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              dateStr,
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 10,
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -325,10 +666,20 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   // ============================================================================
   // MARKET OVERVIEW SECTION (Repaired Logic & Fallbacks)
   // ============================================================================
-  
-  Widget _buildMarketCard(String title, String subtitle, IconData icon, Color color, String tickerKey, String dbKey) {
+
+  Widget _buildMarketCard(
+    String title,
+    String subtitle,
+    IconData icon,
+    Color color,
+    String tickerKey,
+    String dbKey,
+  ) {
     // Find the real benchmark data from your database!
-    final fund = _allFunds.firstWhere((f) => f['ticker'] == tickerKey, orElse: () => {});
+    final fund = _allFunds.firstWhere(
+      (f) => f['ticker'] == tickerKey,
+      orElse: () => {},
+    );
     if (fund.isEmpty) return const SizedBox.shrink();
 
     final returnFactor = (fund[dbKey] as num?)?.toDouble() ?? 1.0;
@@ -336,36 +687,71 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     final double profitValue = _investmentAmount * (returnFactor - 1.0);
 
     String profitString = _currencyFormat.format(profitValue.abs());
-    String displayProfit = profitValue >= 0 ? '+PKR $profitString' : '-PKR $profitString';
-    Color statColor = profitValue >= 0 ? Colors.greenAccent : Colors.redAccent.shade100;
+    String displayProfit = profitValue >= 0
+        ? '+PKR $profitString'
+        : '-PKR $profitString';
+    Color statColor = profitValue >= 0
+        ? Colors.greenAccent
+        : Colors.redAccent.shade100;
 
     return GestureDetector(
       onTap: () {
         // Now opens the REAL page with the REAL data!
-        Navigator.push(context, MaterialPageRoute(
-          builder: (context) => FundDetailsScreen(
-            fund: fund,
-            investmentAmount: _investmentAmount,
-            benchmarkStats: _benchmarkStats,
-          )
-        ));
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FundDetailsScreen(
+              fund: fund,
+              investmentAmount: _investmentAmount,
+              benchmarkStats: _benchmarkStats,
+            ),
+          ),
+        );
       },
       child: Container(
         width: 110,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05), 
-          borderRadius: BorderRadius.circular(16), 
-          border: Border.all(color: Colors.white.withOpacity(0.1))
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [Icon(icon, color: color, size: 14), const SizedBox(width: 6), Text(title, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold))]),
+            Row(
+              children: [
+                Icon(icon, color: color, size: 14),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
-            Text(displayProfit, style: TextStyle(color: statColor, fontSize: 13, fontWeight: FontWeight.w800, overflow: TextOverflow.ellipsis)),
+            Text(
+              displayProfit,
+              style: TextStyle(
+                color: statColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text('${percent >= 0 ? '+' : ''}${percent.toStringAsFixed(2)}%', style: TextStyle(color: statColor.withOpacity(0.8), fontSize: 10, fontWeight: FontWeight.bold)),
+            Text(
+              '${percent >= 0 ? '+' : ''}${percent.toStringAsFixed(2)}%',
+              style: TextStyle(
+                color: statColor.withOpacity(0.8),
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
       ),
@@ -379,8 +765,13 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Text(
-            'Market Benchmarks ($periodLabel)', 
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5)
+            'Market Benchmarks ($periodLabel)',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -388,16 +779,39 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
           child: Container(
-            constraints: BoxConstraints(minWidth: MediaQuery.of(context).size.width),
+            constraints: BoxConstraints(
+              minWidth: MediaQuery.of(context).size.width,
+            ),
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildMarketCard('KSE 100', 'PSX Index', Icons.show_chart, Colors.blueAccent, 'KSE100', dbKey),
+                _buildMarketCard(
+                  'KSE 100',
+                  'PSX Index',
+                  Icons.show_chart,
+                  Colors.blueAccent,
+                  'KSE100',
+                  dbKey,
+                ),
                 const SizedBox(width: 12),
-                _buildMarketCard('KMI 30', 'Islamic Index', Icons.mosque_outlined, Colors.green, 'KMI30', dbKey),
+                _buildMarketCard(
+                  'KMI 30',
+                  'Islamic Index',
+                  Icons.mosque_outlined,
+                  Colors.green,
+                  'KMI30',
+                  dbKey,
+                ),
                 const SizedBox(width: 12),
-                _buildMarketCard('Gold', 'Per Tola', Icons.circle, Colors.amberAccent, 'GOLD_24K', dbKey),
+                _buildMarketCard(
+                  'Gold',
+                  'Per Tola',
+                  Icons.circle,
+                  Colors.amberAccent,
+                  'GOLD_24K',
+                  dbKey,
+                ),
               ],
             ),
           ),
@@ -410,7 +824,14 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap) {
     return ListTile(
       leading: Icon(icon, color: Colors.tealAccent, size: 22),
-      title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
       onTap: onTap,
     );
   }
@@ -418,10 +839,16 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    String dbSortKey = _selectedDashboardPeriod == '30D' ? 'return_30d' : _selectedDashboardPeriod == '3Y' ? 'return_3y' : 'return_1y';
+    String dbSortKey = _selectedDashboardPeriod == '30D'
+        ? 'return_30d'
+        : _selectedDashboardPeriod == '3Y'
+        ? 'return_3y'
+        : 'return_1y';
 
     return Theme(
-      data: Theme.of(context).copyWith(textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme)),
+      data: Theme.of(context).copyWith(
+        textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme),
+      ),
       child: Scaffold(
         extendBodyBehindAppBar: true,
         drawer: Drawer(
@@ -432,212 +859,477 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
               DrawerHeader(
                 decoration: const BoxDecoration(
                   color: Color(0xFF1E293B),
-                  border: Border(bottom: BorderSide(color: Colors.tealAccent, width: 2)),
+                  border: Border(
+                    bottom: BorderSide(color: Colors.tealAccent, width: 2),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Image.asset('assets/app_icon_transparent.png', width: 72, height: 72, errorBuilder: (c,e,s) => const Icon(Icons.account_balance_wallet, color: Colors.tealAccent, size: 48)),
+                    Image.asset(
+                      'assets/app_icon_transparent.png',
+                      width: 72,
+                      height: 72,
+                      errorBuilder: (c, e, s) => const Icon(
+                        Icons.account_balance_wallet,
+                        color: Colors.tealAccent,
+                        size: 48,
+                      ),
+                    ),
                     const SizedBox(height: 12),
-                    const Text('Bachat Vault', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                    const Text('Version 1.0.0', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    const Text(
+                      'Bachat Vault',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Text(
+                      'Version 1.0.0',
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
                   ],
                 ),
               ),
-              
+
               // 1. THE NEW EXPANDABLE INVESTMENT GUIDE MENU
               Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
-                  leading: const Icon(Icons.menu_book_rounded, color: Colors.tealAccent, size: 22),
-                  title: const Text('Investment Guide', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+                  leading: const Icon(
+                    Icons.menu_book_rounded,
+                    color: Colors.tealAccent,
+                    size: 22,
+                  ),
+                  title: const Text(
+                    'Investment Guide',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                   iconColor: Colors.tealAccent,
                   collapsedIconColor: Colors.tealAccent,
-                  childrenPadding: const EdgeInsets.only(left: 54, bottom: 8), // Indents the sub-items perfectly to align with the text
+                  childrenPadding: const EdgeInsets.only(
+                    left: 54,
+                    bottom: 8,
+                  ), // Indents the sub-items perfectly to align with the text
                   children: [
                     ListTile(
-  dense: true, visualDensity: VisualDensity.compact,
-  title: const Text('Your Financial Journey', style: TextStyle(color: Colors.white70, fontSize: 13)),
-  onTap: () {
-    // Closes the drawer first
-    Navigator.pop(context); 
-    // Navigates to the new screen
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const FinancialJourneyScreen()),
-    );
-  },
-),
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      title: const Text(
+                        'Your Financial Journey',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      onTap: () {
+                        // Closes the drawer first
+                        Navigator.pop(context);
+                        // Navigates to the new screen
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const FinancialJourneyScreen(),
+                          ),
+                        );
+                      },
+                    ),
                     ListTile(
-  dense: true, visualDensity: VisualDensity.compact,
-  title: const Text('Mutual Funds', style: TextStyle(color: Colors.white70, fontSize: 13)),
-  onTap: () {
-    Navigator.pop(context); // Close the drawer
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const MutualFundsScreen()),
-    );
-  },
-),
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      title: const Text(
+                        'Mutual Funds',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context); // Close the drawer
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const MutualFundsScreen(),
+                          ),
+                        );
+                      },
+                    ),
                     ListTile(
-  dense: true, visualDensity: VisualDensity.compact,
-  title: const Text('Pension Funds', style: TextStyle(color: Colors.white70, fontSize: 13)),
-  onTap: () {
-    Navigator.pop(context); // Close the drawer
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const PensionFundsScreen()),
-    );
-  },
-),
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      title: const Text(
+                        'Pension Funds',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context); // Close the drawer
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const PensionFundsScreen(),
+                          ),
+                        );
+                      },
+                    ),
                     ListTile(
-  dense: true, visualDensity: VisualDensity.compact,
-  title: const Text('Exchange Traded Funds', style: TextStyle(color: Colors.white70, fontSize: 13)),
-  onTap: () {
-    Navigator.pop(context); // Close the drawer
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const EtfsScreen()),
-    );
-  },
-),
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      title: const Text(
+                        'Exchange Traded Funds',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context); // Close the drawer
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const EtfsScreen(),
+                          ),
+                        );
+                      },
+                    ),
                     ListTile(
-  dense: true, visualDensity: VisualDensity.compact,
-  title: const Text('Overseas Investors', style: TextStyle(color: Colors.white70, fontSize: 13)),
-  onTap: () {
-    Navigator.pop(context); // Close the drawer
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const OverseasInvestorsScreen()),
-    );
-  },
-),
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      title: const Text(
+                        'Overseas Investors',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context); // Close the drawer
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const OverseasInvestorsScreen(),
+                          ),
+                        );
+                      },
+                    ),
                     ListTile(
-  dense: true, visualDensity: VisualDensity.compact,
-  title: const Text('Account Opening & Taxes', style: TextStyle(color: Colors.white70, fontSize: 13)),
-  onTap: () {
-    Navigator.pop(context); 
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const AccountOpeningScreen()),
-    );
-  },
-),
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      title: const Text(
+                        'Account Opening & Taxes',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const AccountOpeningScreen(),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
-              
+
               const Divider(color: Colors.white12),
-              Padding(padding: const EdgeInsets.only(left: 16, top: 16, bottom: 8), child: Text('COMMUNITIES', style: TextStyle(color: Colors.tealAccent.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2))),
-              _buildDrawerItem(Icons.facebook_rounded, 'Facebook Page', () => _launchURL('https://www.facebook.com/MFInvestment')),
-              _buildDrawerItem(Icons.groups_rounded, 'Facebook Group', () => _launchURL('https://www.facebook.com/groups/2125880957874842')),
-              _buildDrawerItem(Icons.chat_rounded, 'WhatsApp Group', () => _launchURL('https://chat.whatsapp.com/HHUBK1TR6h918qOlfx4n4v?mode=gi_t')),
-              _buildDrawerItem(Icons.campaign_rounded, 'WhatsApp Channel', () => _launchURL('https://whatsapp.com/channel/0029Vb7Nr1k1t90jrhhvPp3j')),
-              _buildDrawerItem(Icons.camera_alt_rounded, 'Instagram', () => _launchURL('https://www.instagram.com/mfi_pakistan/')),
-              _buildDrawerItem(Icons.smart_display_rounded, 'YouTube Channel', () => _launchURL('https://www.youtube.com/@the_mixedb4g')),
+              Padding(
+                padding: const EdgeInsets.only(left: 16, top: 16, bottom: 8),
+                child: Text(
+                  'COMMUNITIES',
+                  style: TextStyle(
+                    color: Colors.tealAccent.withOpacity(0.7),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              _buildDrawerItem(
+                Icons.facebook_rounded,
+                'Facebook Page',
+                () => _launchURL('https://www.facebook.com/MFInvestment'),
+              ),
+              _buildDrawerItem(
+                Icons.groups_rounded,
+                'Facebook Group',
+                () => _launchURL(
+                  'https://www.facebook.com/groups/2125880957874842',
+                ),
+              ),
+              _buildDrawerItem(
+                Icons.chat_rounded,
+                'WhatsApp Group',
+                () => _launchURL(
+                  'https://chat.whatsapp.com/HHUBK1TR6h918qOlfx4n4v?mode=gi_t',
+                ),
+              ),
+              _buildDrawerItem(
+                Icons.campaign_rounded,
+                'WhatsApp Channel',
+                () => _launchURL(
+                  'https://whatsapp.com/channel/0029Vb7Nr1k1t90jrhhvPp3j',
+                ),
+              ),
+              _buildDrawerItem(
+                Icons.camera_alt_rounded,
+                'Instagram',
+                () => _launchURL('https://www.instagram.com/mfi_pakistan/'),
+              ),
+              _buildDrawerItem(
+                Icons.smart_display_rounded,
+                'YouTube Channel',
+                () => _launchURL('https://www.youtube.com/@the_mixedb4g'),
+              ),
               const Divider(color: Colors.white12),
               _buildDrawerItem(Icons.gavel_rounded, 'Terms & Conditions', () {
-  Navigator.pop(context); // Close the drawer
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => const TermsConditionsScreen()),
-  );
-}),
-              _buildDrawerItem(Icons.security_rounded, 'Privacy Policy', () {
-  // Replace this URL with your actual Google Sites link!
-  launchUrl(Uri.parse('https://sites.google.com/view/bachatvault-privacy'));
-}),
-              
-              // New Feedback & Support Launcher
-              _buildDrawerItem(Icons.email_outlined, 'Feedback & Support', () async {
-                final Uri emailLaunchUri = Uri(
-                  scheme: 'mailto',
-                  path: 'themixedb4g@gmail.com', // 👉 CHANGE THIS TO YOUR GMAIL
-                  query: 'subject=Bachat Vault App Feedback', 
+                Navigator.pop(context); // Close the drawer
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const TermsConditionsScreen(),
+                  ),
                 );
-                // Make sure to import 'package:url_launcher/url_launcher.dart'; at the top of your file!
-                launchUrl(emailLaunchUri);
               }),
-              
-              const SizedBox(height: 24), // Gives a little breathing room at the bottom of the scroll
+              _buildDrawerItem(Icons.security_rounded, 'Privacy Policy', () {
+                // Replace this URL with your actual Google Sites link!
+                launchUrl(
+                  Uri.parse(
+                    'https://sites.google.com/view/bachatvault-privacy',
+                  ),
+                );
+              }),
+
+              // New Feedback & Support Launcher
+              _buildDrawerItem(
+                Icons.email_outlined,
+                'Feedback & Support',
+                () async {
+                  final Uri emailLaunchUri = Uri(
+                    scheme: 'mailto',
+                    path:
+                        'themixedb4g@gmail.com', // 👉 CHANGE THIS TO YOUR GMAIL
+                    query: 'subject=Bachat Vault App Feedback',
+                  );
+                  // Make sure to import 'package:url_launcher/url_launcher.dart'; at the top of your file!
+                  launchUrl(emailLaunchUri);
+                },
+              ),
+
+              const SizedBox(
+                height: 24,
+              ), // Gives a little breathing room at the bottom of the scroll
             ],
           ),
         ),
         appBar: AppBar(
-          title: Row(mainAxisSize: MainAxisSize.min, children: [Text(_getGreetingText(), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white)), const SizedBox(width: 8), AnimatedEmoji(emoji: _getGreetingEmoji())]),
-          centerTitle: false, backgroundColor: Colors.transparent, elevation: 0,
-          actions: [IconButton(icon: const Icon(Icons.refresh, color: Colors.white), onPressed: _fetchData)],
-          flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.black.withOpacity(0.2)))),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _getGreetingText(),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 8),
+              AnimatedEmoji(emoji: _getGreetingEmoji()),
+            ],
+          ),
+          centerTitle: false,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: _fetchData,
+            ),
+          ],
+          flexibleSpace: ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(color: Colors.black.withOpacity(0.2)),
+            ),
+          ),
         ),
         body: Container(
-          width: double.infinity, height: double.infinity,
-          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF000000)])),
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF000000)],
+            ),
+          ),
           child: SafeArea(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Colors.tealAccent))
+                ? const Center(
+                    child: CircularProgressIndicator(color: Colors.tealAccent),
+                  )
                 : _errorMessage != null
-                    ? Center(child: Text('Error: $_errorMessage', style: const TextStyle(color: Colors.redAccent)))
-                    : SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 16),
-                            const Center(child: Text('Your Investment Value', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500))),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
-                              child: Center(
-                                child: IntrinsicWidth(
-                                  child: TextField(
-                                    controller: _investmentController, keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: [IndianNumberFormatter()], textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.w800), decoration: const InputDecoration(prefixText: 'PKR ', prefixStyle: TextStyle(color: Colors.tealAccent, fontSize: 24, fontWeight: FontWeight.w700), border: InputBorder.none),
-                                    onChanged: (val) { setState(() { _investmentAmount = double.tryParse(val.replaceAll(',', '')) ?? 0.0; }); },
+                ? Center(
+                    child: Text(
+                      'Error: $_errorMessage',
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                  )
+                : SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 16),
+                        const Center(
+                          child: Text(
+                            'Your Investment Value',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 40,
+                            vertical: 8,
+                          ),
+                          child: Center(
+                            child: IntrinsicWidth(
+                              child: TextField(
+                                controller: _investmentController,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                inputFormatters: [IndianNumberFormatter()],
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 40,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                                decoration: const InputDecoration(
+                                  prefixText: 'PKR ',
+                                  prefixStyle: TextStyle(
+                                    color: Colors.tealAccent,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
                                   ),
+                                  border: InputBorder.none,
+                                ),
+                                onChanged: (val) {
+                                  setState(() {
+                                    _investmentAmount =
+                                        double.tryParse(
+                                          val.replaceAll(',', ''),
+                                        ) ??
+                                        0.0;
+                                  });
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildDashFilterBtn('30D'),
+                            const SizedBox(width: 12),
+                            _buildDashFilterBtn('1Y'),
+                            const SizedBox(width: 12),
+                            _buildDashFilterBtn('3Y'),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+
+                        SizedBox(
+                          // Perfectly balanced height to fit 5 cards without overflow OR massive gaps!
+                          height: 380,
+                          child: PageView(
+                            controller: _pageController,
+                            physics: const BouncingScrollPhysics(),
+                            children: [
+                              _buildTop5Card('Top 5 Equity Funds', [
+                                'Equity',
+                              ], dbSortKey),
+                              _buildTop5Card('Top 5 ETFs', [
+                                'Exchange Traded Fund',
+                              ], dbSortKey),
+                              _buildTop5Card('Top 5 Money Market', [
+                                'Money Market',
+                              ], dbSortKey),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 0),
+
+                        _buildMarketOverviewSection(
+                          _selectedDashboardPeriod,
+                          dbSortKey,
+                        ),
+                        const SizedBox(height: 24),
+
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                          child: InkWell(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => FullPerformanceScreen(
+                                  allFunds: _allFunds,
+                                  initialInvestment: _investmentAmount,
+                                  benchmarkStats: _benchmarkStats,
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [_buildDashFilterBtn('30D'), const SizedBox(width: 12), _buildDashFilterBtn('1Y'), const SizedBox(width: 12), _buildDashFilterBtn('3Y')],
-                            ),
-                            const SizedBox(height: 8),
-                            
-                            SizedBox(
-                              // Perfectly balanced height to fit 5 cards without overflow OR massive gaps!
-                              height: 380,
-                              child: PageView(
-                                controller: _pageController,
-                                physics: const BouncingScrollPhysics(),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Colors.tealAccent, Colors.teal],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.tealAccent.withOpacity(0.3),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  _buildTop5Card('Top 5 Equity Funds', ['Equity'], dbSortKey),
-                                  _buildTop5Card('Top 5 ETFs', ['Exchange Traded Fund'], dbSortKey),
-                                  _buildTop5Card('Top 5 Money Market', ['Money Market'], dbSortKey),
+                                  Icon(
+                                    Icons.analytics_outlined,
+                                    color: Colors.black87,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Explore Full Performance',
+                                    style: TextStyle(
+                                      color: Colors.black87,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 0),
-
-                            _buildMarketOverviewSection(_selectedDashboardPeriod, dbSortKey),
-                            const SizedBox(height: 24),
-
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                              child: InkWell(
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => FullPerformanceScreen(allFunds: _allFunds, initialInvestment: _investmentAmount, benchmarkStats: _benchmarkStats))),
-                                borderRadius: BorderRadius.circular(16),
-                                child: Container(
-                                  width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 16),
-                                  decoration: BoxDecoration(gradient: const LinearGradient(colors: [Colors.tealAccent, Colors.teal], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.tealAccent.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]),
-                                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.analytics_outlined, color: Colors.black87), SizedBox(width: 8), Text('Explore Full Performance', style: TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.w800))]),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 40),
-                          ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 40),
+                      ],
+                    ),
+                  ),
           ),
         ),
       ),
@@ -645,6 +1337,64 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   }
 }
 
-class AnimatedEmoji extends StatefulWidget { final String emoji; const AnimatedEmoji({super.key, required this.emoji}); @override State<AnimatedEmoji> createState() => _AnimatedEmojiState(); }
-class _AnimatedEmojiState extends State<AnimatedEmoji> with SingleTickerProviderStateMixin { late AnimationController _controller; @override void initState() { super.initState(); _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true); } @override void dispose() { _controller.dispose(); super.dispose(); } @override Widget build(BuildContext context) { return SlideTransition(position: Tween<Offset>(begin: const Offset(0, -0.15), end: const Offset(0, 0.15)).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)), child: Text(widget.emoji, style: const TextStyle(fontSize: 22))); } }
-class IndianNumberFormatter extends TextInputFormatter { @override TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) { if (newValue.text.isEmpty) return newValue; String cleanText = newValue.text.replaceAll(RegExp(r'[^0-9.]'), ''); if (cleanText.split('.').length > 2) cleanText = oldValue.text.replaceAll(',', ''); if (cleanText.isEmpty) return newValue.copyWith(text: ''); List<String> parts = cleanText.split('.'); String wholeNumber = parts[0]; String decimalPart = parts.length > 1 ? '.${parts[1]}' : ''; if (wholeNumber.isEmpty) return newValue.copyWith(text: cleanText); final formatter = NumberFormat.decimalPattern('en_IN'); String formatted = formatter.format(int.parse(wholeNumber)); String finalString = formatted + decimalPart; return TextEditingValue(text: finalString, selection: TextSelection.collapsed(offset: finalString.length)); } }
+class AnimatedEmoji extends StatefulWidget {
+  final String emoji;
+  const AnimatedEmoji({super.key, required this.emoji});
+  @override
+  State<AnimatedEmoji> createState() => _AnimatedEmojiState();
+}
+
+class _AnimatedEmojiState extends State<AnimatedEmoji>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(0, -0.15),
+        end: const Offset(0, 0.15),
+      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+      child: Text(widget.emoji, style: const TextStyle(fontSize: 22)),
+    );
+  }
+}
+
+class IndianNumberFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) return newValue;
+    String cleanText = newValue.text.replaceAll(RegExp(r'[^0-9.]'), '');
+    if (cleanText.split('.').length > 2)
+      cleanText = oldValue.text.replaceAll(',', '');
+    if (cleanText.isEmpty) return newValue.copyWith(text: '');
+    List<String> parts = cleanText.split('.');
+    String wholeNumber = parts[0];
+    String decimalPart = parts.length > 1 ? '.${parts[1]}' : '';
+    if (wholeNumber.isEmpty) return newValue.copyWith(text: cleanText);
+    final formatter = NumberFormat.decimalPattern('en_IN');
+    String formatted = formatter.format(int.parse(wholeNumber));
+    String finalString = formatted + decimalPart;
+    return TextEditingValue(
+      text: finalString,
+      selection: TextSelection.collapsed(offset: finalString.length),
+    );
+  }
+}

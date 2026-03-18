@@ -37,11 +37,11 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
         .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
+        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
+        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
@@ -88,9 +88,11 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 
   List<String> _categories = ['All'];
   List<String> _amcs = ['All'];
+  final List<String> _shariahOptions = ['All', 'Islamic', 'Conventional']; // ADDED: Shariah Options List
   String _selectedCategory = 'All';
   String _selectedAmc = 'All';
   String _selectedPeriod = '1D';
+  String _selectedShariah = 'All'; // ADDED: Current Shariah State
 
   @override
   void initState() {
@@ -132,8 +134,8 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       case '5Y': return 'return_5y'; 
       case '10Y': return 'return_10y';
       case '15Y': return 'return_15y'; 
-      case 'MTD': return 'return_30d'; 
-      case 'YTD': return 'return_1y'; 
+      case 'MTD': return 'return_mtd'; 
+      case 'YTD': return 'return_fytd'; 
       default: return 'return_1d';
     }
   }
@@ -141,8 +143,24 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   List<Map<String, dynamic>> _getFilteredAndSortedFunds() {
     final sortKey = _getSortKey();
     var filtered = widget.allFunds.where((f) => f[sortKey] != null).toList();
-    if (_selectedCategory != 'All') filtered = filtered.where((f) => f['category']?.toString().trim() == _selectedCategory).toList();
-    if (_selectedAmc != 'All') filtered = filtered.where((f) => f['amc_name']?.toString().trim() == _selectedAmc).toList();
+    
+    // 1. Filter by Category
+    if (_selectedCategory != 'All') {
+      filtered = filtered.where((f) => f['category']?.toString().trim() == _selectedCategory).toList();
+    }
+    
+    // 2. Filter by AMC
+    if (_selectedAmc != 'All') {
+      filtered = filtered.where((f) => f['amc_name']?.toString().trim() == _selectedAmc).toList();
+    }
+    
+    // 3. Filter by Shariah (ADDED)
+    if (_selectedShariah == 'Islamic') {
+      filtered = filtered.where((f) => f['is_shariah'] == 1 || f['is_shariah'] == '1' || f['is_shariah'] == true).toList();
+    } else if (_selectedShariah == 'Conventional') {
+      filtered = filtered.where((f) => f['is_shariah'] != 1 && f['is_shariah'] != '1' && f['is_shariah'] != true).toList();
+    }
+
     filtered.sort((a, b) { final valA = (a[sortKey] as num).toDouble(); final valB = (b[sortKey] as num).toDouble(); return valB.compareTo(valA); });
     return filtered;
   }
@@ -243,16 +261,50 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      const Text('Category', style: TextStyle(color: Colors.white70, fontSize: 12)), const SizedBox(height: 4),
-                      Container(
-                        height: 48, padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedCategory, isExpanded: true, dropdownColor: const Color(0xFF203A43), menuMaxHeight: 350, icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500), isDense: true,
-                            items: _categories.map((cat) => DropdownMenuItem<String>(value: cat, child: Text(cat, maxLines: 2, overflow: TextOverflow.visible))).toList(),
-                            onChanged: (val) { if (val != null) setState(() { _selectedCategory = val; }); },
+                      
+                      // ADDED: Split Row for Fund Type and Category (Swapped)
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 4, // CHANGED: Matches Investment Amount exactly
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Fund Type', style: TextStyle(color: Colors.white70, fontSize: 11)), const SizedBox(height: 4),
+                                Container(
+                                  height: 48, padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _selectedShariah, isExpanded: true, dropdownColor: const Color(0xFF203A43), menuMaxHeight: 350, icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500), isDense: true,
+                                      items: _shariahOptions.map((opt) => DropdownMenuItem<String>(value: opt, child: Text(opt, style: const TextStyle(fontSize: 13)))).toList(),
+                                      onChanged: (val) { if (val != null) setState(() { _selectedShariah = val; }); },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 6, // CHANGED: Matches AMC Name exactly
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Category', style: TextStyle(color: Colors.white70, fontSize: 11)), const SizedBox(height: 4),
+                                Container(
+                                  height: 48, padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _selectedCategory, isExpanded: true, dropdownColor: const Color(0xFF203A43), menuMaxHeight: 350, icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500), isDense: true,
+                                      items: _categories.map((cat) => DropdownMenuItem<String>(value: cat, child: Text(cat, maxLines: 2, overflow: TextOverflow.visible, style: const TextStyle(fontSize: 13)))).toList(),
+                                      onChanged: (val) { if (val != null) setState(() { _selectedCategory = val; }); },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       
@@ -281,7 +333,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                           padding: const EdgeInsets.only(top: 8, bottom: 40, left: 16, right: 16), physics: const BouncingScrollPhysics(), itemCount: displayedFunds.length,
                           itemBuilder: (context, index) {
                             final fund = displayedFunds[index];
-                            // THE BUG WAS RIGHT HERE! Fixed!
                             final fundName = _cleanFundName(fund['fund_name']?.toString() ?? 'Unknown');
                             final amcName = fund['amc_name'] ?? '';
                             final category = fund['category'] ?? '';
