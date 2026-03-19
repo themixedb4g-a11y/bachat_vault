@@ -140,7 +140,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     }
   }
 
-  List<Map<String, dynamic>> _getFilteredAndSortedFunds() {
+List<Map<String, dynamic>> _getFilteredAndSortedFunds() {
     final sortKey = _getSortKey();
     var filtered = widget.allFunds.where((f) => f[sortKey] != null).toList();
     
@@ -161,7 +161,37 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       filtered = filtered.where((f) => f['is_shariah'] != 1 && f['is_shariah'] != '1' && f['is_shariah'] != true).toList();
     }
 
-    filtered.sort((a, b) { final valA = (a[sortKey] as num).toDouble(); final valB = (b[sortKey] as num).toDouble(); return valB.compareTo(valA); });
+    // 4. SMART SORTING: Date first for Absolute, Returns first for everything else
+    filtered.sort((a, b) { 
+      final valA = (a[sortKey] as num).toDouble(); 
+      final valB = (b[sortKey] as num).toDouble(); 
+      
+      final logicA = a['return_logic']?.toString().trim() ?? '';
+      final logicB = b['return_logic']?.toString().trim() ?? '';
+
+      // If BOTH are Absolute, factor in the date
+      if (logicA == 'Absolute' && logicB == 'Absolute') {
+        final dateStrA = a['last_validity_date']?.toString();
+        final dateStrB = b['last_validity_date']?.toString();
+        
+        // Parse dates safely (use a very old date as a fallback if null)
+        final dateA = dateStrA != null ? (DateTime.tryParse(dateStrA) ?? DateTime(1970)) : DateTime(1970);
+        final dateB = dateStrB != null ? (DateTime.tryParse(dateStrB) ?? DateTime(1970)) : DateTime(1970);
+
+        // Compare dates (descending: newer dates bubble to the top)
+        int dateComparison = dateB.compareTo(dateA);
+        
+        // If dates are different, sort by date
+        if (dateComparison != 0) {
+          return dateComparison;
+        }
+        // If dates are exactly the same, fall through and sort by return value
+      }
+
+      // Default sort purely by return value (Descending: highest return first)
+      return valB.compareTo(valA); 
+    });
+
     return filtered;
   }
 

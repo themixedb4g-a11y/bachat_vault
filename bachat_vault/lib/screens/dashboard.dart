@@ -215,11 +215,20 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   String _getGreetingText() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    if (hour < 20) return 'Good Evening';
-    return 'Good Night';
+    final hour = DateTime.now().hour; // 24-hour format (0 to 23)
+
+    if (hour >= 5 && hour < 12) {
+      return 'Good Morning';   // 5:00 AM to 11:59 AM
+    } 
+    if (hour >= 12 && hour < 17) {
+      return 'Good Afternoon'; // 12:00 PM to 4:59 PM
+    } 
+    if (hour >= 17 && hour < 23) {
+      return 'Good Evening';   // 5:00 PM to 10:59 PM
+    } 
+    
+    // This catches everything else: 11:00 PM (23) and Midnight to 4:59 AM (0, 1, 2, 3, 4)
+    return 'Good Night'; 
   }
 
   String _getGreetingEmoji() {
