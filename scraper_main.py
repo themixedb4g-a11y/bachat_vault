@@ -134,28 +134,51 @@ def sync_psx_indices():
     try:
         response = session.get("https://dps.psx.com.pk", timeout=15)
         tree = html.fromstring(response.content)
-        raw_date_text = tree.xpath("//div[@class='market-status']//span/text()")
-
-        # FIXED: Regex changed to \d{1,2} to correctly read single-digit dates (e.g., Mar 8, 2024)
-        web_date = next(
-            (
-                datetime.strptime(
-                    re.search(r"[A-Z][a-z]{2}\s\d{1,2},\s\d{4}", item).group(),
-                    "%b %d, %Y",
-                ).strftime("%Y-%m-%d")
-                for item in raw_date_text
-                if re.search(r"[A-Z][a-z]{2}\s\d{1,2},\s\d{4}", item)
-            ),
-            datetime.now(pytz.timezone("Asia/Karachi")).strftime("%Y-%m-%d"),
-        )
 
         batch = []
+        # Loop through KSE100 (Index 1) and KMI30 (Index 5)
         for ticker, xp_idx in [("KSE100", 1), ("KMI30", 5)]:
-            result = tree.xpath(f"//*[@id='indicesTabs']/div[2]/div[{xp_idx}]/h1")
-            if result:
+
+            # 1. Grab Value (Your Google Sheet: .../h1)
+            val_result = tree.xpath(f"//*[@id='indicesTabs']/div[2]/div[{xp_idx}]/h1")
+
+            # 2. Grab Date (Your Google Sheet: .../div[1])
+            date_result = tree.xpath(
+                f"//*[@id='indicesTabs']/div[2]/div[{xp_idx}]/div[1]"
+            )
+
+            if val_result and date_result:
+                # Parse the Value (e.g., 152740.37)
                 val = float(
-                    result[0].text_content().strip().replace(",", "").split(" ")[0]
+                    val_result[0].text_content().strip().replace(",", "").split(" ")[0]
                 )
+
+                # Parse the Date text (e.g., "As of Mar 19, 2026 1:48 PM")
+                raw_date_text = date_result[0].text_content().strip()
+
+                # Regex looks for 1 or more letters for the month, allowing both "Mar" and "March"
+                date_match = re.search(r"([A-Za-z]+\s\d{1,2},\s\d{4})", raw_date_text)
+
+                if date_match:
+                    date_str = date_match.group(1)
+                    try:
+                        # Try parsing 3-letter month (Mar)
+                        web_date = datetime.strptime(date_str, "%b %d, %Y").strftime(
+                            "%Y-%m-%d"
+                        )
+                    except ValueError:
+                        # If that fails, try parsing full month (March)
+                        web_date = datetime.strptime(date_str, "%B %d, %Y").strftime(
+                            "%Y-%m-%d"
+                        )
+                else:
+                    print(
+                        f"   ⚠️ Warning: Could not parse date for {ticker}. Using fallback."
+                    )
+                    web_date = datetime.now(pytz.timezone("Asia/Karachi")).strftime(
+                        "%Y-%m-%d"
+                    )
+
                 batch.append(
                     {
                         "ticker": ticker,
@@ -172,7 +195,7 @@ def sync_psx_indices():
                 supabase.table("benchmarks").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
                 ).execute()
-            print(f"   ✅ PSX Indices updated.")
+                print(f"   ✅ PSX Indices updated.")
     except Exception as e:
         print(f"   ❌ PSX Error: {e}")
 
