@@ -135,14 +135,16 @@ def sync_psx_indices():
         response = session.get("https://dps.psx.com.pk", timeout=15)
         tree = html.fromstring(response.content)
         raw_date_text = tree.xpath("//div[@class='market-status']//span/text()")
+
+        # FIXED: Regex changed to \d{1,2} to correctly read single-digit dates (e.g., Mar 8, 2024)
         web_date = next(
             (
                 datetime.strptime(
-                    re.search(r"[A-Z][a-z]{2}\s\d{2},\s\d{4}", item).group(),
+                    re.search(r"[A-Z][a-z]{2}\s\d{1,2},\s\d{4}", item).group(),
                     "%b %d, %Y",
                 ).strftime("%Y-%m-%d")
                 for item in raw_date_text
-                if re.search(r"[A-Z][a-z]{2}\s\d{2},\s\d{4}", item)
+                if re.search(r"[A-Z][a-z]{2}\s\d{1,2},\s\d{4}", item)
             ),
             datetime.now(pytz.timezone("Asia/Karachi")).strftime("%Y-%m-%d"),
         )
@@ -164,16 +166,15 @@ def sync_psx_indices():
                 )
 
         if batch:
-
             safe_batch = filter_manual_entries(batch, "benchmarks")
 
             if safe_batch:
                 supabase.table("benchmarks").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
                 ).execute()
-            print(f"   ✅ PSX Indices updated.")
+            print(f"   ✅ PSX Indices updated.")
     except Exception as e:
-        print(f"   ❌ PSX Error: {e}")
+        print(f"   ❌ PSX Error: {e}")
 
 
 # --- TASK B: GOLD ---
@@ -224,8 +225,10 @@ def fetch_etf(ticker):
         price = float(
             re.findall(r"\d+\.\d+", soup.find("div", class_="quote__price").text)[0]
         )
+        # FIXED: Regex changed to \d{1,2} to correctly read single-digit dates
         date_match = re.search(
-            r"[A-Z][a-z]{2}\s\d{2},\s\d{4}", soup.find("div", class_="quote__date").text
+            r"[A-Z][a-z]{2}\s\d{1,2},\s\d{4}",
+            soup.find("div", class_="quote__date").text,
         ).group()
         web_date = datetime.strptime(date_match, "%b %d, %Y").strftime("%Y-%m-%d")
 
@@ -269,7 +272,7 @@ def sync_psx_etfs():
 def sync_mufap_master():
     print("🏛️ Syncing MUFAP (Targeted)...")
 
-    # Guardrail 3 Enforcement: Identify ETFs that MUST be scraped from PSX (Absolute Logic)
+    # Enforcement 1: Identify ETFs that MUST be scraped from PSX
     psx_exclusive_etfs = set()
     for ticker, category in FUND_CATEGORY_MAP.items():
         if (
@@ -278,15 +281,23 @@ def sync_mufap_master():
         ):
             psx_exclusive_etfs.add(ticker)
 
+    # FIXED (Holiday Bug): Automatically find any fund that is mapped to be scraped directly from an AMC
+    amc_direct_tickers = {
+        row["ticker"] for row in master_res.data if row.get("amc_website_name")
+    }
+
+    # Combine all exclusions so MUFAP skips them completely
+    excluded_tickers = psx_exclusive_etfs.union(amc_direct_tickers)
+
     target_ids = {
         str(int(float(row["fund_id_mufap"])))
         for row in master_res.data
-        if row.get("fund_id_mufap") and row["ticker"] not in psx_exclusive_etfs
+        if row.get("fund_id_mufap") and row["ticker"] not in excluded_tickers
     }
     id_to_ticker = {
         str(int(float(row["fund_id_mufap"]))): row["ticker"]
         for row in master_res.data
-        if row.get("fund_id_mufap") and row["ticker"] not in psx_exclusive_etfs
+        if row.get("fund_id_mufap") and row["ticker"] not in excluded_tickers
     }
 
     batch = []
@@ -330,9 +341,9 @@ def sync_mufap_master():
                 supabase.table("daily_nav").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
                 ).execute()
-            print(f"   ✅ {len(batch)} MUFAP funds updated.")
+            print(f"   ✅ {len(batch)} MUFAP funds updated.")
     except Exception as e:
-        print(f"   ❌ MUFAP Error: {e}")
+        print(f"   ❌ MUFAP Error: {e}")
 
 
 # --- TASK E: UBL AMC (Priority Overwrite) ---
@@ -466,6 +477,82 @@ def sync_ubl_amc_refined():
 
     except Exception as e:
         print(f"   ❌ UBL Error: {e}")
+
+
+# --- TASK E2: ABL AMC (Priority Overwrite) ---
+def sync_abl_amc():
+    print("🏦 Syncing ABL AMC (Priority)...")
+
+    def clean_text(text):
+        if not text:
+            return ""
+        return (
+            text.lower().replace("-", " ").replace("*", "").replace("  ", " ").strip()
+        )
+
+    # Map for ABL funds
+    abl_map = {
+        clean_text(r["amc_website_name"]): r["ticker"]
+        for r in master_res.data
+        if r.get("amc_website_name")
+    }
+
+    batch = []
+    try:
+        url = "https://ablfunds.com/nav"
+        soup = BeautifulSoup(session.get(url, verify=False, timeout=15).text, "lxml")
+
+        # ABL has one main table, we find the first table
+        table = soup.find("table")
+        if not table:
+            print("   ❌ ABL Error: Could not find the table on the website.")
+            return
+
+        for row in table.find_all("tr"):
+            cells = row.find_all("td")
+            # We need at least 5 columns because Date is in cells[4]
+            if len(cells) >= 5:
+                raw_name = cells[0].get_text(strip=True)
+                ticker = abl_map.get(clean_text(raw_name))
+
+                if ticker:
+                    try:
+                        # Date format: 19-Mar-2026 (%d-%b-%Y)
+                        dt_str = datetime.strptime(
+                            cells[4].text.strip(), "%d-%b-%Y"
+                        ).strftime("%Y-%m-%d")
+
+                        if is_valid_date(dt_str, ticker):
+                            nav_text = cells[1].text.replace(",", "").strip()
+                            if nav_text:
+                                batch.append(
+                                    {
+                                        "ticker": ticker,
+                                        "nav": float(nav_text),
+                                        "validity_date": dt_str,
+                                        "source": "AMC_Website",
+                                    }
+                                )
+                    except Exception as inner_e:
+                        # Skip rows that fail parsing (like header rows)
+                        continue
+
+        if batch:
+            unique_batch = {
+                (item["ticker"], item["validity_date"]): item for item in batch
+            }
+            final_batch = list(unique_batch.values())
+
+            safe_batch = filter_manual_entries(final_batch, "daily_nav")
+
+            if safe_batch:
+                supabase.table("daily_nav").upsert(
+                    safe_batch, on_conflict="ticker,validity_date"
+                ).execute()
+                print(f"   ✅ {len(safe_batch)} ABL funds updated (Priority).")
+
+    except Exception as e:
+        print(f"   ❌ ABL Error: {e}")
 
 
 # --- TASK F: MUFAP PAYOUTS ---
@@ -672,6 +759,7 @@ if __name__ == "__main__":
     elif target == "mufap":
         sync_mufap_master()
         sync_ubl_amc_refined()
+        sync_abl_amc()
     elif target == "gold_ter":
         sync_gold_rates()
         sync_mufap_payouts()
@@ -687,6 +775,7 @@ if __name__ == "__main__":
         sync_psx_etfs()
         sync_mufap_master()
         sync_ubl_amc_refined()
+        sync_abl_amc()
         sync_mufap_payouts()
         sync_mufap_ter()
         sync_crypto_rates()
