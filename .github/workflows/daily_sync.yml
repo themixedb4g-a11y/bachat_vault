@@ -2,8 +2,8 @@ name: Bachat Vault Master Sync
 
 on:
   schedule:
-    # Runs at 4:14 AM, 2:14 PM, 4:14 PM, and 6:14 PM PKT (UTC+5)
-    - cron: '14 9,11,13,23 * * *' 
+    # Runs at 6:14 AM, 5:14 PM, 7:14 PM, and 9:14 PM PKT (UTC+5)
+    - cron: '14 1,12,14,16 * * *' 
   workflow_dispatch:
     # THIS IS NEW: Adds a dropdown menu when you run it manually!
     inputs:
