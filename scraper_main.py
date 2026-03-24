@@ -676,10 +676,9 @@ def sync_hbl_amc():
 
     batch = []
     try:
-        url = "https://hblasset.com/fund-prices"
+        url = "https://hblasset.com/fund-prices/"
         soup = BeautifulSoup(session.get(url, verify=False, timeout=15).text, "lxml")
 
-        # HBL has one main table, we find the first table
         table = soup.find("table")
         if not table:
             print("   ❌ HBL Error: Could not find the table on the website.")
@@ -687,22 +686,44 @@ def sync_hbl_amc():
 
         for row in table.find_all("tr"):
             cells = row.find_all("td")
-            # We need at least 4 columns because Date is in cells[3]
+
+            # We need at least 4 columns
             if len(cells) >= 4:
                 raw_name = cells[0].get_text(strip=True)
                 ticker = hbl_map.get(clean_text(raw_name))
 
                 if ticker:
                     try:
-                        # Clean extra spaces just in case, Date format: Mar 24, 2026 (%b %d, %Y)
                         raw_date = re.sub(r"\s+", " ", cells[3].text.strip())
-                        dt_str = datetime.strptime(raw_date, "%b %d, %Y").strftime(
-                            "%Y-%m-%d"
-                        )
 
+                        # THE FIX: Flexible Date Parser for HBL
+                        dt_str = None
+                        date_formats = [
+                            "%d-%b-%Y",
+                            "%d-%b-%y",
+                            "%d-%B-%Y",
+                            "%d/%m/%Y",
+                            "%b %d, %Y",
+                            "%B %d, %Y",
+                            "%Y-%m-%d",
+                        ]
+                        for fmt in date_formats:
+                            try:
+                                dt_str = datetime.strptime(raw_date, fmt).strftime(
+                                    "%Y-%m-%d"
+                                )
+                                break
+                            except ValueError:
+                                pass
+
+                        if not dt_str:
+                            continue  # Skip if date completely fails to parse
+
+                        # Guardrail check
                         if is_valid_date(dt_str, ticker):
-                            # NAV is in 3rd column (index 2)
-                            nav_text = cells[2].text.replace(",", "").strip()
+                            nav_text = (
+                                cells[2].text.replace(",", "").strip()
+                            )  # NAV is Index 2
                             if nav_text:
                                 batch.append(
                                     {
@@ -713,7 +734,6 @@ def sync_hbl_amc():
                                     }
                                 )
                     except Exception as inner_e:
-                        # Skip rows that fail parsing (like header rows)
                         continue
 
         if batch:
@@ -729,6 +749,13 @@ def sync_hbl_amc():
                     safe_batch, on_conflict="ticker,validity_date"
                 ).execute()
                 print(f"   ✅ {len(safe_batch)} HBL funds updated (Priority).")
+            else:
+                print(
+                    f"   ✅ HBL funds processed, but 0 pushed (guarded or duplicates)."
+                )
+        else:
+            # THE FIX: No more silent ghosts. It will tell us exactly if it failed.
+            print("   ⚠️ No HBL funds processed. Check amc_website_name exact matches.")
 
     except Exception as e:
         print(f"   ❌ HBL Error: {e}")
