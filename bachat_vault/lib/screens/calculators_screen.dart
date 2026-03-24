@@ -727,10 +727,10 @@ class FireCalculator extends StatefulWidget {
 
 class _FireCalculatorState extends State<FireCalculator> with AutomaticKeepAliveClientMixin {
   final TextEditingController _currentAgeController = TextEditingController(text: '30');
-  final TextEditingController _retirementAgeController = TextEditingController(text: '60');
+  final TextEditingController _retirementAgeController = TextEditingController(text: '50');
   final TextEditingController _lifeExpectancyController = TextEditingController(text: '85');
   final TextEditingController _initialInvController = TextEditingController(text: '5,00,000');
-  final TextEditingController _monthlyInvController = TextEditingController(text: '5,000');
+  final TextEditingController _monthlyInvController = TextEditingController(text: '20,000');
   final TextEditingController _stepUpController = TextEditingController(text: '10');
   final TextEditingController _preRetireReturnController = TextEditingController(text: '16');
   final TextEditingController _postRetireReturnController = TextEditingController(text: '12');
@@ -818,7 +818,7 @@ class _FireCalculatorState extends State<FireCalculator> with AutomaticKeepAlive
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: Column(
               children: [
-                const Padding(padding: EdgeInsets.only(bottom: 12.0), child: Text('Financial Independence and Retire Early', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+                const Padding(padding: EdgeInsets.only(bottom: 12.0), child: Text('Financial Independence - Retire Early', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: BackdropFilter(
@@ -829,10 +829,10 @@ class _FireCalculatorState extends State<FireCalculator> with AutomaticKeepAlive
                       child: Column(
                         children: [
                           Row(children: [Expanded(child: _buildField(label: 'Current Age', prefix: '', suffix: 'Yrs', controller: _currentAgeController)), const SizedBox(width: 12), Expanded(child: _buildField(label: 'Retirement Age', prefix: '', suffix: 'Yrs', controller: _retirementAgeController))]), const SizedBox(height: 8),
-                          Row(children: [Expanded(child: _buildField(label: 'Life Expectancy', prefix: '', suffix: 'Yrs', controller: _lifeExpectancyController)), const SizedBox(width: 12), Expanded(child: _buildField(label: 'Initial Invest.', prefix: 'PKR', suffix: '', controller: _initialInvController, isCurrency: true))]), const SizedBox(height: 8),
-                          Row(children: [Expanded(child: _buildField(label: 'Monthly Invest.', prefix: 'PKR', suffix: '', controller: _monthlyInvController, isCurrency: true)), const SizedBox(width: 12), Expanded(child: _buildField(label: 'Annual Step-up', prefix: '', suffix: '%', controller: _stepUpController))]), const SizedBox(height: 8),
-                          Row(children: [Expanded(child: _buildField(label: 'Return (Pre-Ret)', prefix: '', suffix: '%', controller: _preRetireReturnController)), const SizedBox(width: 12), Expanded(child: _buildField(label: 'Return (Post)', prefix: '', suffix: '%', controller: _postRetireReturnController))]), const SizedBox(height: 8),
-                          Row(children: [Expanded(child: _buildField(label: 'Monthly Exp.', prefix: 'PKR', suffix: '', controller: _monthlyExpController, isCurrency: true)), const SizedBox(width: 12), Expanded(child: _buildField(label: 'Inflation P.A.', prefix: '', suffix: '%', controller: _inflationController))]),
+                          Row(children: [Expanded(child: _buildField(label: 'Life Expectancy', prefix: '', suffix: 'Yrs', controller: _lifeExpectancyController)), const SizedBox(width: 12), Expanded(child: _buildField(label: 'Initial Investment', prefix: 'PKR', suffix: '', controller: _initialInvController, isCurrency: true))]), const SizedBox(height: 8),
+                          Row(children: [Expanded(child: _buildField(label: 'Monthly Investment', prefix: 'PKR', suffix: '', controller: _monthlyInvController, isCurrency: true)), const SizedBox(width: 12), Expanded(child: _buildField(label: 'Annual Step-up', prefix: '', suffix: '%', controller: _stepUpController))]), const SizedBox(height: 8),
+                          Row(children: [Expanded(child: _buildField(label: 'Return (Pre-Retirement)', prefix: '', suffix: '%', controller: _preRetireReturnController)), const SizedBox(width: 12), Expanded(child: _buildField(label: 'Return (Post Retirement)', prefix: '', suffix: '%', controller: _postRetireReturnController))]), const SizedBox(height: 8),
+                          Row(children: [Expanded(child: _buildField(label: 'Monthly Expenses', prefix: 'PKR', suffix: '', controller: _monthlyExpController, isCurrency: true)), const SizedBox(width: 12), Expanded(child: _buildField(label: 'Inflation P.A.', prefix: '', suffix: '%', controller: _inflationController))]),
                         ],
                       ),
                     ),
@@ -855,7 +855,7 @@ class _FireCalculatorState extends State<FireCalculator> with AutomaticKeepAlive
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildResultRow('Corpus at Retirement', 'PKR ${_currencyFormat.format(_corpusAtRetirement)}', Colors.white, isTotal: true), const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(color: Colors.white12)),
-                    _buildResultRow('1st Mth Exp (at Retire)', 'PKR ${_currencyFormat.format(_expensesAtRetirement)}', Colors.white70), const SizedBox(height: 12),
+                    _buildResultRow('1st Month Expenses (at Retirement)', 'PKR ${_currencyFormat.format(_expensesAtRetirement)}', Colors.white70), const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: statusColor.withOpacity(0.3))),
                       child: Row(children: [Icon(_fireAchieved ? Icons.check_circle_outline : Icons.warning_amber_rounded, color: statusColor, size: 20), const SizedBox(width: 8), Expanded(child: Text(statusMessage, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w600)))]),
