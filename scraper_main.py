@@ -578,6 +578,162 @@ def sync_abl_amc():
         print(f"   ❌ ABL Error: {e}")
 
 
+# --- TASK E3: NBP FUNDS (Priority Overwrite) ---
+def sync_nbp_amc():
+    print("🏦 Syncing NBP Funds (Priority)...")
+
+    def clean_text(text):
+        if not text:
+            return ""
+        return (
+            text.lower().replace("-", " ").replace("*", "").replace("  ", " ").strip()
+        )
+
+    # Map for NBP funds
+    nbp_map = {
+        clean_text(r["amc_website_name"]): r["ticker"]
+        for r in master_res.data
+        if r.get("amc_website_name")
+    }
+
+    batch = []
+    try:
+        url = "https://www.nbpfunds.com/fund-prices/fund-nav-view/"
+        soup = BeautifulSoup(session.get(url, verify=False, timeout=15).text, "lxml")
+
+        # NBP has one main table, we find the first table
+        table = soup.find("table")
+        if not table:
+            print("   ❌ NBP Error: Could not find the table on the website.")
+            return
+
+        for row in table.find_all("tr"):
+            cells = row.find_all("td")
+            # We need at least 4 columns because Date is in cells[3]
+            if len(cells) >= 4:
+                raw_name = cells[0].get_text(strip=True)
+                ticker = nbp_map.get(clean_text(raw_name))
+
+                if ticker:
+                    try:
+                        # Clean extra spaces just in case, Date format: Mar 24, 2026 (%b %d, %Y)
+                        raw_date = re.sub(r"\s+", " ", cells[3].text.strip())
+                        dt_str = datetime.strptime(raw_date, "%b %d, %Y").strftime(
+                            "%Y-%m-%d"
+                        )
+
+                        if is_valid_date(dt_str, ticker):
+                            # NAV is in 3rd column (index 2)
+                            nav_text = cells[2].text.replace(",", "").strip()
+                            if nav_text:
+                                batch.append(
+                                    {
+                                        "ticker": ticker,
+                                        "nav": float(nav_text),
+                                        "validity_date": dt_str,
+                                        "source": "AMC_Website",
+                                    }
+                                )
+                    except Exception as inner_e:
+                        # Skip rows that fail parsing (like header rows)
+                        continue
+
+        if batch:
+            unique_batch = {
+                (item["ticker"], item["validity_date"]): item for item in batch
+            }
+            final_batch = list(unique_batch.values())
+
+            safe_batch = filter_manual_entries(final_batch, "daily_nav")
+
+            if safe_batch:
+                supabase.table("daily_nav").upsert(
+                    safe_batch, on_conflict="ticker,validity_date"
+                ).execute()
+                print(f"   ✅ {len(safe_batch)} NBP funds updated (Priority).")
+
+    except Exception as e:
+        print(f"   ❌ NBP Error: {e}")
+
+
+# --- TASK E4: HBL AMC (Priority Overwrite) ---
+def sync_hbl_amc():
+    print("🏦 Syncing HBL AMC (Priority)...")
+
+    def clean_text(text):
+        if not text:
+            return ""
+        return (
+            text.lower().replace("-", " ").replace("*", "").replace("  ", " ").strip()
+        )
+
+    # Map for HBL funds
+    hbl_map = {
+        clean_text(r["amc_website_name"]): r["ticker"]
+        for r in master_res.data
+        if r.get("amc_website_name")
+    }
+
+    batch = []
+    try:
+        url = "https://hblasset.com/fund-prices"
+        soup = BeautifulSoup(session.get(url, verify=False, timeout=15).text, "lxml")
+
+        # HBL has one main table, we find the first table
+        table = soup.find("table")
+        if not table:
+            print("   ❌ HBL Error: Could not find the table on the website.")
+            return
+
+        for row in table.find_all("tr"):
+            cells = row.find_all("td")
+            # We need at least 4 columns because Date is in cells[3]
+            if len(cells) >= 4:
+                raw_name = cells[0].get_text(strip=True)
+                ticker = hbl_map.get(clean_text(raw_name))
+
+                if ticker:
+                    try:
+                        # Clean extra spaces just in case, Date format: Mar 24, 2026 (%b %d, %Y)
+                        raw_date = re.sub(r"\s+", " ", cells[3].text.strip())
+                        dt_str = datetime.strptime(raw_date, "%b %d, %Y").strftime(
+                            "%Y-%m-%d"
+                        )
+
+                        if is_valid_date(dt_str, ticker):
+                            # NAV is in 3rd column (index 2)
+                            nav_text = cells[2].text.replace(",", "").strip()
+                            if nav_text:
+                                batch.append(
+                                    {
+                                        "ticker": ticker,
+                                        "nav": float(nav_text),
+                                        "validity_date": dt_str,
+                                        "source": "AMC_Website",
+                                    }
+                                )
+                    except Exception as inner_e:
+                        # Skip rows that fail parsing (like header rows)
+                        continue
+
+        if batch:
+            unique_batch = {
+                (item["ticker"], item["validity_date"]): item for item in batch
+            }
+            final_batch = list(unique_batch.values())
+
+            safe_batch = filter_manual_entries(final_batch, "daily_nav")
+
+            if safe_batch:
+                supabase.table("daily_nav").upsert(
+                    safe_batch, on_conflict="ticker,validity_date"
+                ).execute()
+                print(f"   ✅ {len(safe_batch)} HBL funds updated (Priority).")
+
+    except Exception as e:
+        print(f"   ❌ HBL Error: {e}")
+
+
 # --- TASK F: MUFAP PAYOUTS ---
 def sync_mufap_payouts():
     print("💸 Syncing MUFAP Payouts...")
@@ -604,9 +760,12 @@ def sync_mufap_payouts():
         )
         for row in soup.find_all("tr"):
             cells = row.find_all("td")
-            if len(cells) < 10:
+
+            # THE FIX: We now know the table has exactly 8 columns of data
+            if len(cells) < 8:
                 continue
 
+            # 1. Link is in Index [2]
             link = cells[2].find("a", href=True)
             if link and "FundID=" in link["href"]:
                 m_id = re.search(r"FundID=(\d+)", link["href"]).group(1)
@@ -614,9 +773,14 @@ def sync_mufap_payouts():
                 if m_id in target_ids:
                     ticker = id_to_ticker[m_id]
                     try:
-                        payout_amount_str = cells[7].text.replace(",", "").strip()
-                        ex_nav_str = cells[8].text.replace(",", "").strip()
-                        payout_date_str = cells[9].text.strip()
+                        # 2. Data mapped to the exact indices you discovered
+                        payout_amount_str = (
+                            cells[5].text.replace(",", "").strip()
+                        )  # Index 5
+                        ex_nav_str = cells[6].text.replace(",", "").strip()  # Index 6
+                        raw_date = cells[7].text.strip()  # Index 7
+
+                        raw_date = re.sub(r"\s+", " ", raw_date)
 
                         if not payout_amount_str or payout_amount_str == "-":
                             continue
@@ -627,9 +791,26 @@ def sync_mufap_payouts():
                             if ex_nav_str and ex_nav_str != "-"
                             else 0.0
                         )
-                        dt_str = datetime.strptime(
-                            payout_date_str, "%b %d, %Y"
-                        ).strftime("%Y-%m-%d")
+
+                        # Flexible Date Parser
+                        dt_str = None
+                        for fmt in [
+                            "%b %d, %Y",
+                            "%d-%b-%Y",
+                            "%d-%b-%y",
+                            "%d/%m/%Y",
+                            "%B %d, %Y",
+                        ]:
+                            try:
+                                dt_str = datetime.strptime(raw_date, fmt).strftime(
+                                    "%Y-%m-%d"
+                                )
+                                break
+                            except ValueError:
+                                pass
+
+                        if not dt_str:
+                            continue
 
                         batch.append(
                             {
@@ -639,15 +820,21 @@ def sync_mufap_payouts():
                                 "ex_nav": ex_nav,
                             }
                         )
-                    except:
+                    except Exception as inner_e:
                         continue
 
         if batch:
-            # Reverted: No manual filter here because the key is 'payout_date', not 'validity_date'
+            unique_batch = {
+                (item["ticker"], item["payout_date"]): item for item in batch
+            }
+            final_batch = list(unique_batch.values())
+
             supabase.table("payout_history").upsert(
-                batch, on_conflict="ticker,payout_date"
+                final_batch, on_conflict="ticker,payout_date"
             ).execute()
-            print(f"   ✅ {len(batch)} Payouts synced.")
+            print(f"   ✅ {len(final_batch)} Payouts synced.")
+        else:
+            print("   ⚠️ No new payouts found to sync.")
 
     except Exception as e:
         print(f"   ❌ Payouts Error: {e}")
@@ -724,7 +911,7 @@ def sync_mufap_ter():
         print(f"   ❌ TER Error: {e}")
 
 
-# --- TASK: CRYPTO DAILY (Fast & Lean) ---
+# --- TASK H: CRYPTO DAILY (Fast & Lean) ---
 def sync_crypto_rates():
     print("🪙 Syncing Crypto (Daily Routine)...")
     try:
@@ -783,6 +970,8 @@ if __name__ == "__main__":
         sync_mufap_master()
         sync_ubl_amc_refined()
         sync_abl_amc()
+        sync_nbp_amc()
+        sync_hbl_amc()
     elif target == "gold_ter":
         sync_gold_rates()
         sync_mufap_payouts()
@@ -799,6 +988,8 @@ if __name__ == "__main__":
         sync_mufap_master()
         sync_ubl_amc_refined()
         sync_abl_amc()
+        sync_nbp_amc()
+        sync_hbl_amc()
         sync_mufap_payouts()
         sync_mufap_ter()
         sync_crypto_rates()
