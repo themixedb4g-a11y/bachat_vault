@@ -400,7 +400,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         )
         .replaceAll(
           'Meezan Financial Planning Fund of Funds (MAAP I)',
-          'Meezan FP Fund of Funds (Conservative)',
+          'Meezan FP Fund of Funds (MAAP-I)',
         )
         .replaceAll(
           'Meezan Financial Planning Fund of Funds (Aggressive)',
@@ -478,25 +478,53 @@ class _DashboardScreenState extends State<DashboardScreen>
     List<String> categories,
     String sortKey,
   ) {
+    // 1. Initial Filter
     var filtered = _allFunds.where((f) {
       final cat = f['category']?.toString().trim() ?? '';
-      final ticker = f['ticker']?.toString().trim() ?? ''; // ADDED: Grab the ticker
-      
-      // ADDED: && ticker != 'HBLTETF' so it is completely excluded from Top 5 rankings
+      final ticker = f['ticker']?.toString().trim() ?? ''; 
       return categories.contains(cat) && f[sortKey] != null && ticker != 'HBLTETF';
     }).toList();
     
     if (filtered.isEmpty) return [];
 
-    String latestDateStr = "";
+    // 2. Find the absolute latest date
+    DateTime? latestDate;
     for (var f in filtered) {
-      final d = f['last_validity_date']?.toString() ?? "";
-      if (d.compareTo(latestDateStr) > 0) latestDateStr = d;
+      final dStr = f['last_validity_date']?.toString() ?? "";
+      try {
+        final d = DateTime.parse(dStr);
+        if (latestDate == null || d.isAfter(latestDate)) {
+          latestDate = d;
+        }
+      } catch (_) {}
     }
 
-    filtered = filtered
-        .where((f) => f['last_validity_date']?.toString() == latestDateStr)
-        .toList();
+    // 3. The "Smart Weekend" Filter
+    if (latestDate != null) {
+      // Default to 1 day for normal weekdays (e.g., Wed keeps Wed & Tue. Drops Mon.)
+      int allowedDaysBack = 1; 
+      
+      // DateTime weekdays: Monday=1, Tuesday=2... Saturday=6, Sunday=7
+      if (latestDate.weekday == DateTime.monday) {
+        allowedDaysBack = 3; // Reaches exactly back to Friday, drops Thursday
+      } else if (latestDate.weekday == DateTime.sunday) {
+        allowedDaysBack = 2; // Reaches back to Friday, drops Thursday
+      }
+
+      filtered = filtered.where((f) {
+        final dStr = f['last_validity_date']?.toString() ?? "";
+        try {
+          final fundDate = DateTime.parse(dStr);
+          final difference = latestDate!.difference(fundDate).inDays.abs();
+          
+          return difference <= allowedDaysBack; 
+        } catch (_) {
+          return false;
+        }
+      }).toList();
+    }
+
+    // 4. Sort strictly by return
     filtered.sort((a, b) {
       final valA = (a[sortKey] as num).toDouble();
       final valB = (b[sortKey] as num).toDouble();
