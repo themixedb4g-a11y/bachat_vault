@@ -903,3 +903,6 @@ def run_scraper(request):
         pass  # The 1-second timeout prevents the scraper from waiting for the math to finish.
 
     return completion_msg, 200
+
+
+# Let's go Google Cloud
