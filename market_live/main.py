@@ -76,22 +76,31 @@ def sync_live_markets():
             headers = [th.text.strip().upper() for th in table.find_all("th")]
 
             # Find index positions safely
+            # Find index positions safely using partial matches to avoid hidden space errors
             col_idx = {
-                "symbol": headers.index("SYMBOL") if "SYMBOL" in headers else 0,
-                "ldcp": headers.index("LDCP") if "LDCP" in headers else -1,
-                "current": headers.index("CURRENT") if "CURRENT" in headers else -1,
-                "change": headers.index("CHANGE") if "CHANGE" in headers else -1,
-                "change_percent": (
-                    headers.index("CHANGE(%)") if "CHANGE(%)" in headers else -1
+                "symbol": next((i for i, h in enumerate(headers) if "SYMBOL" in h), 0),
+                "ldcp": next((i for i, h in enumerate(headers) if "LDCP" in h), -1),
+                "current": next(
+                    (i for i, h in enumerate(headers) if "CURRENT" in h), -1
                 ),
-                "weight": (
-                    headers.index("IDX WTG(%)") if "IDX WTG(%)" in headers else -1
+                "change": next(
+                    (
+                        i
+                        for i, h in enumerate(headers)
+                        if "CHANGE" in h and "%" not in h
+                    ),
+                    -1,
                 ),
-                "volume": headers.index("VOLUME") if "VOLUME" in headers else -1,
-                "market_cap": (
-                    headers.index("MARKET CAP (M)")
-                    if "MARKET CAP (M)" in headers
-                    else -1
+                "change_percent": next(
+                    (i for i, h in enumerate(headers) if "CHANGE" in h and "%" in h), -1
+                ),
+                "weight": next(
+                    (i for i, h in enumerate(headers) if "WTG" in h or "WEIGHT" in h),
+                    -1,
+                ),
+                "volume": next((i for i, h in enumerate(headers) if "VOLUME" in h), -1),
+                "market_cap": next(
+                    (i for i, h in enumerate(headers) if "MARKET CAP" in h), -1
                 ),
             }
 
