@@ -1,0 +1,8 @@
+functions-framework==3.*
+supabase
+requests
+beautifulsoup4
+lxml
+pytz
+yfinance
+pandas
