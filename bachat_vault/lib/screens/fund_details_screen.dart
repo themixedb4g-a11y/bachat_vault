@@ -55,6 +55,9 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       final String ticker = widget.fund['ticker'];
       final bool isShariah = (widget.fund['is_shariah'] == 1 || widget.fund['is_shariah'] == '1' || widget.fund['is_shariah'] == true);
       final String indexTicker = isShariah ? 'KMI30' : 'KSE100';
+      
+      // --- NEW: Identify if the main ticker is actually a benchmark ---
+      final bool isBenchmark = ['KSE100', 'KMI30', 'GOLD_24K', 'CPI_PK'].contains(ticker);
 
       // 1. Determine Date Range
       DateTime startDate = DateTime.now();
@@ -69,12 +72,15 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       }
       final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
 
-      // 2. Fetch Data Concurrently
-      final fundFuture = supabase.from('daily_nav').select('validity_date, nav').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true);
-      final payoutFuture = supabase.from('payout_history').select('payout_date, payout_amount, ex_nav').eq('ticker', ticker).gte('payout_date', startDateStr);
+      // 2. Fetch Data Concurrently (SMART ROUTING)
+      final fundFuture = isBenchmark 
+          ? supabase.from('benchmarks').select('validity_date, value').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true)
+          : supabase.from('daily_nav').select('validity_date, nav').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true);
+          
+      final payoutFuture = isBenchmark 
+          ? Future.value([]) // Benchmarks don't have payouts
+          : supabase.from('payout_history').select('payout_date, payout_amount, ex_nav').eq('ticker', ticker).gte('payout_date', startDateStr);
       
-      // Assumes benchmarks are stored in a 'benchmarks' table with columns: ticker, validity_date, value
-      // If they are in daily_nav, change 'benchmarks' to 'daily_nav' and 'value' to 'nav'
       final indexFuture = _showKse100 ? supabase.from('benchmarks').select('validity_date, value').eq('ticker', indexTicker).gte('validity_date', startDateStr).order('validity_date', ascending: true) : Future.value([]);
       final goldFuture = _showGold ? supabase.from('benchmarks').select('validity_date, value').eq('ticker', 'GOLD_24K').gte('validity_date', startDateStr).order('validity_date', ascending: true) : Future.value([]);
 
@@ -85,25 +91,42 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       final indexData = responses[2] as List<dynamic>;
       final goldData = responses[3] as List<dynamic>;
 
-      if (fundData.isEmpty) {
-        setState(() { _isLoadingChart = false; });
+      // Ensure we have at least 2 points to draw a line
+      if (fundData.length < 2) {
+        setState(() { 
+          _isLoadingChart = false; 
+          _fundSpots = []; 
+        });
         return;
       }
 
-      // 3. Process Fund Data (Base 100 + Payout Reinvestment)
+      // 3. Process Main Data (Base 100 + Payout Reinvestment)
       List<FlSpot> fundSpots = [];
-      double startNav = (fundData.first['nav'] as num).toDouble();
-      double currentUnits = 100.0 / startNav; // Start with exactly 100 PKR worth of units
-
+      
+      // SAFEGUARD: Find the first actual valid NAV/Value greater than 0
+      var validStartRow = fundData.firstWhere(
+        (row) {
+          double val = isBenchmark ? (row['value'] as num).toDouble() : (row['nav'] as num).toDouble();
+          return val > 0;
+        }, 
+        orElse: () => fundData.first
+      );
+      
+      double startNav = isBenchmark ? (validStartRow['value'] as num).toDouble() : (validStartRow['nav'] as num).toDouble();
+      if (startNav <= 0) startNav = 1.0; 
+      
+      double currentUnits = 100.0 / startNav; 
       double localMinY = 999999;
       double localMaxY = -999999;
 
       for (var row in fundData) {
         String dateStr = row['validity_date'].toString();
         DateTime date = DateTime.parse(dateStr);
-        double nav = (row['nav'] as num).toDouble();
+        double nav = isBenchmark ? (row['value'] as num).toDouble() : (row['nav'] as num).toDouble();
 
-        // Check for payouts on this day
+        if (nav <= 0) continue; // The zero shield
+
+        // Reinvest payouts (will gracefully do nothing for benchmarks since payoutData is empty)
         var dailyPayouts = payoutData.where((p) => p['payout_date'].toString().startsWith(dateStr));
         for (var p in dailyPayouts) {
           double pAmt = (p['payout_amount'] as num).toDouble();
@@ -122,14 +145,16 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         if (base100Value > localMaxY) localMaxY = base100Value;
       }
 
-      // 4. Process Benchmarks (Simple Base 100)
+      // 4. Process Benchmark Overlays (Simple Base 100)
       List<FlSpot> processBenchmark(List<dynamic> data) {
         List<FlSpot> spots = [];
         if (data.isEmpty) return spots;
         double startVal = (data.first['value'] as num).toDouble();
+        if (startVal <= 0) startVal = 1.0;
         for (var row in data) {
           DateTime date = DateTime.parse(row['validity_date'].toString());
           double val = (row['value'] as num).toDouble();
+          if (val <= 0) continue;
           double base100Value = (val / startVal) * 100.0;
           
           if (base100Value < localMinY) localMinY = base100Value;
@@ -149,7 +174,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         _minX = fundSpots.first.x;
         _maxX = fundSpots.last.x;
         
-        // Add 5% padding top and bottom for visual breathing room
         _minY = localMinY * 0.95;
         _maxY = localMaxY * 1.05;
         
