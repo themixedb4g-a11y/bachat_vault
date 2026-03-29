@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bachat_vault/screens/fund_details_screen.dart';
 import 'package:bachat_vault/screens/compare_funds_screen.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class FullPerformanceScreen extends StatefulWidget {
   final List<Map<String, dynamic>> allFunds;
@@ -47,6 +48,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   DateTime? _customStartDate;
   DateTime? _customEndDate;
   bool _isCustomLoading = false;
+  Map<String, double> _customReturnsMap = {};
 
   // Performance Optimization
   List<Map<String, dynamic>> _displayedFunds = [];
@@ -186,8 +188,13 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 
     // SMART SORTING
     filtered.sort((a, b) {
-      final valA = (a[sortKey] as num?)?.toDouble() ?? 0.0;
-      final valB = (b[sortKey] as num?)?.toDouble() ?? 0.0;
+      final valA = _selectedPeriod == 'Custom' 
+          ? (_customReturnsMap[a['ticker']] ?? -999.0) 
+          : (a[sortKey] as num?)?.toDouble() ?? -999.0;
+          
+      final valB = _selectedPeriod == 'Custom' 
+          ? (_customReturnsMap[b['ticker']] ?? -999.0) 
+          : (b[sortKey] as num?)?.toDouble() ?? -999.0;
       
       final logicA = a['return_logic']?.toString().trim() ?? '';
       final logicB = b['return_logic']?.toString().trim() ?? '';
@@ -234,15 +241,98 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     }
   }
 
-  void _calculateCustomReturns() async {
+  Future<void> _calculateCustomReturns() async {
     if (_customStartDate == null || _customEndDate == null) return;
     
-    setState(() { _isCustomLoading = true; });
+    setState(() { _isCustomLoading = true; _customReturnsMap.clear(); });
     
-    // TODO: This is where we will write the Supabase fetch and math logic!
-    await Future.delayed(const Duration(seconds: 2)); // Simulating network request
-    
-    setState(() { _isCustomLoading = false; });
+    try {
+      final supabase = Supabase.instance.client;
+      final DateFormat dbFormat = DateFormat('yyyy-MM-dd');
+
+      // 1. Define our safe 7-day lookback windows
+      final startLimit = dbFormat.format(_customStartDate!.subtract(const Duration(days: 7)));
+      final startTarget = dbFormat.format(_customStartDate!);
+      
+      final endLimit = dbFormat.format(_customEndDate!.subtract(const Duration(days: 7)));
+      final endTarget = dbFormat.format(_customEndDate!);
+
+      // Grab all tickers currently displayed so we don't fetch data for funds we don't care about
+      final List<String> targetTickers = _displayedFunds.map((f) => f['ticker'].toString()).toList();
+      if (targetTickers.isEmpty) {
+        setState(() { _isCustomLoading = false; });
+        return;
+      }
+
+      // 2. Fetch Start NAVs, End NAVs, and Payouts
+      // Using .inFilter() and direct awaits to keep Dart's type-checker happy
+      final startData = await supabase.from('daily_nav')
+          .select('ticker, nav, validity_date')
+          .inFilter('ticker', targetTickers)
+          .gte('validity_date', startLimit)
+          .lte('validity_date', startTarget);
+          
+      final endData = await supabase.from('daily_nav')
+          .select('ticker, nav, validity_date')
+          .inFilter('ticker', targetTickers)
+          .gte('validity_date', endLimit)
+          .lte('validity_date', endTarget);
+          
+      final payoutData = await supabase.from('payout_history')
+          .select('ticker, payout_amount, ex_nav, payout_date')
+          .inFilter('ticker', targetTickers)
+          .gte('payout_date', startTarget)
+          .lte('payout_date', endTarget);
+
+      // 3. Helper function to find the most recent NAV in the 7-day window
+      double? getLatestNav(List<dynamic> rows, String ticker) {
+        var tickerRows = rows.where((r) => r['ticker'] == ticker).toList();
+        if (tickerRows.isEmpty) return null;
+        // Sort descending so the most recent date is at index 0
+        tickerRows.sort((a, b) => b['validity_date'].toString().compareTo(a['validity_date'].toString()));
+        return (tickerRows[0]['nav'] as num).toDouble();
+      }
+
+      // 4. THE COMPOUNDING LOOP
+      Map<String, double> newCalculations = {};
+
+      for (String ticker in targetTickers) {
+        double? startNav = getLatestNav(startData, ticker);
+        double? endNav = getLatestNav(endData, ticker);
+
+        // If the fund didn't exist yet, we skip it
+        if (startNav == null || endNav == null || startNav <= 0) continue;
+
+        double currentUnits = 1.0;
+        
+        // Reinvest any payouts that happened in this timeframe
+        var specificPayouts = payoutData.where((p) => p['ticker'] == ticker).toList();
+        for (var p in specificPayouts) {
+          double pAmt = (p['payout_amount'] as num).toDouble();
+          double exNav = (p['ex_nav'] as num).toDouble();
+          if (exNav > 0) {
+            currentUnits = currentUnits * (1 + (pAmt / exNav));
+          }
+        }
+
+        // Calculate the Final Return Factor (e.g., 1.05 = 5% profit)
+        double finalValue = currentUnits * endNav;
+        double returnFactor = finalValue / startNav;
+        
+        newCalculations[ticker] = returnFactor;
+      }
+
+      // 5. Save the results and trigger a UI sort
+      setState(() {
+        _customReturnsMap = newCalculations;
+      });
+      _applyFiltersAsync(); // Re-sort the list based on the new numbers!
+
+    } catch (e) {
+      debugPrint("Error calculating custom returns: $e");
+    } finally {
+      setState(() { _isCustomLoading = false; });
+    }
   }
 
   // --- NAME CLEANER ---
@@ -524,9 +614,17 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                             final isShariah = (fund['is_shariah'] == 1 || fund['is_shariah'] == '1' || fund['is_shariah'] == true);
                             
                             // Return calculation math
-                            final returnFactor = _selectedPeriod == 'Custom' ? 1.0 : (fund[sortKey] as num?)?.toDouble() ?? 1.0;
-                            final double percent = _selectedPeriod == 'Custom' ? 0.0 : (returnFactor - 1.0) * 100.0;
-                            final double profitValue = _selectedPeriod == 'Custom' ? 0.0 : _investmentAmount * (returnFactor - 1.0);
+                            final returnFactor = _selectedPeriod == 'Custom' 
+      ? (_customReturnsMap[ticker] ?? 1.0) 
+      : (fund[sortKey] as num?)?.toDouble() ?? 1.0;
+      
+  final double percent = _selectedPeriod == 'Custom' && !_customReturnsMap.containsKey(ticker) 
+      ? 0.0 
+      : (returnFactor - 1.0) * 100.0;
+      
+  final double profitValue = _selectedPeriod == 'Custom' && !_customReturnsMap.containsKey(ticker) 
+      ? 0.0 
+      : _investmentAmount * (returnFactor - 1.0);
                             
                             String profitString = _currencyFormat.format(profitValue.abs());
                             String formattedValueDisplay = profitValue > 0 ? '+$profitString' : profitValue < 0 ? '-$profitString' : '0';
