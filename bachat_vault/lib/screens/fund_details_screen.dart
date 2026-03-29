@@ -475,7 +475,7 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                     Center(
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.show_chart, color: Colors.tealAccent, size: 20),
-                        label: const Text('[Beta] Interactive Chart', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        label: const Text('✨ Interactive Chart', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                           side: BorderSide(color: Colors.tealAccent.withOpacity(0.5)),
