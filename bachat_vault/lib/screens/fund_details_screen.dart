@@ -179,11 +179,11 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     }
   }
 
-  // --- FUND HOLDINGS ENGINE ---
+  // --- FUND HOLDINGS ENGINE (TOP 10 COMPANIES + OTHERS/CASH) ---
   Future<void> _loadHoldingsData() async {
     try {
       final supabase = Supabase.instance.client;
-      final String ticker = widget.fund['ticker'];
+      final String ticker = widget.fund['ticker']?.toString().trim().toUpperCase() ?? '';
 
       final dateResponse = await supabase.from('fund_holdings')
           .select('fmr_date').eq('fund_ticker', ticker).order('fmr_date', ascending: false).limit(1);
@@ -193,7 +193,8 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         return;
       }
       
-      String latestDate = dateResponse.first['fmr_date'].toString();
+      String rawDate = dateResponse.first['fmr_date'].toString();
+      String latestDate = rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate;
 
       final holdingsResponse = await supabase.from('fund_holdings')
           .select('stock_ticker, holding_percentage')
@@ -204,45 +205,57 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         return;
       }
 
-      final List<String> stockTickers = holdingsResponse.map((h) => h['stock_ticker'].toString()).toList();
-      if (stockTickers.isEmpty) {
-        if (mounted) setState(() => _isLoadingHoldings = false);
-        return;
-      }
-
-      // Safe Supabase Array querying (.in_ instead of .inFilter)
+      final List<String> stockTickers = (holdingsResponse as List).map((h) => h['stock_ticker'].toString().trim()).toList();
+      
       final stocksResponse = await supabase.from('master_stocks')
-          .select('ticker, company_name, sector')
-          .in_('ticker', stockTickers);
+          .select('ticker, company_name')
+          .inFilter('ticker', stockTickers);
 
-      Map<String, double> sectorMap = {};
-      List<Map<String, dynamic>> processedHoldings = [];
+      List<Map<String, dynamic>> realCompanies = [];
+      Map<String, dynamic>? otherHoldings;
+      Map<String, dynamic>? cashHoldings;
 
       for (var holding in holdingsResponse) {
-        String sTicker = holding['stock_ticker'].toString();
-        // Safe Number Parsing
+        String sTicker = holding['stock_ticker'].toString().trim();
         double percent = double.tryParse(holding['holding_percentage'].toString()) ?? 0.0;
         
-        var stockMeta = stocksResponse.firstWhere((s) => s['ticker'] == sTicker, orElse: () => {'company_name': sTicker, 'sector': 'Others / Cash Equivalents'});
+        var stockMeta = (stocksResponse as List).firstWhere(
+          (s) => s['ticker'].toString().trim() == sTicker, 
+          orElse: () => {'company_name': sTicker}
+        );
         
-        String sector = stockMeta['sector'].toString();
         String name = stockMeta['company_name'].toString();
-
-        sectorMap[sector] = (sectorMap[sector] ?? 0) + percent;
-        processedHoldings.add({'ticker': sTicker, 'name': name, 'sector': sector, 'percentage': percent});
+        
+        // Clean up names and separate them into buckets
+        if (sTicker == 'CASH') {
+          cashHoldings = {'ticker': sTicker, 'name': 'Cash & Equivalents', 'percentage': percent};
+        } else if (sTicker == 'OTHER') {
+          otherHoldings = {'ticker': sTicker, 'name': 'Other Holdings', 'percentage': percent};
+        } else {
+          realCompanies.add({'ticker': sTicker, 'name': name, 'percentage': percent});
+        }
       }
 
-      var sortedSectors = sectorMap.entries.map((e) => {'sector': e.key, 'percentage': e.value}).toList();
-      sortedSectors.sort((a, b) => (b['percentage'] as double).compareTo(a['percentage'] as double));
+      // 1. Sort the REAL companies by highest percentage
+      realCompanies.sort((a, b) => (b['percentage'] as double).compareTo(a['percentage'] as double));
+      
+      // 2. Take exactly the Top 10 real companies
+      List<Map<String, dynamic>> finalHoldings = realCompanies.take(10).toList();
 
-      processedHoldings.sort((a, b) => (b['percentage'] as double).compareTo(a['percentage'] as double));
-      List<Map<String, dynamic>> top10 = processedHoldings.take(10).toList();
+      // 3. Append the muted categories strictly at the bottom (if they have > 0%)
+      if (otherHoldings != null && (otherHoldings['percentage'] as double) > 0) {
+        finalHoldings.add(otherHoldings);
+      }
+      if (cashHoldings != null && (cashHoldings['percentage'] as double) > 0) {
+        finalHoldings.add(cashHoldings);
+      }
 
       if (mounted) {
         setState(() {
-          _holdingsDate = DateFormat('MMMM yyyy').format(DateTime.parse(latestDate));
-          _sectorAllocations = sortedSectors;
-          _topHoldings = top10;
+          DateTime? parsedDate = DateTime.tryParse(latestDate);
+          _holdingsDate = parsedDate != null ? DateFormat('MMMM yyyy').format(parsedDate) : latestDate;
+          _sectorAllocations = []; 
+          _topHoldings = finalHoldings;
           _isLoadingHoldings = false;
         });
       }
@@ -499,58 +512,79 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     );
   }
 
-  // --- FUND HOLDINGS UI ---
+  // --- FUND HOLDINGS UI (OVERFLOW FIX & DISTINCT COLORS) ---
   Widget _buildHoldingsSection() {
     if (_isLoadingHoldings) {
       return const Padding(padding: EdgeInsets.symmetric(vertical: 40), child: Center(child: CircularProgressIndicator(color: Colors.tealAccent)));
     }
     
-    if (_sectorAllocations.isEmpty) {
-      return const SizedBox.shrink(); // Hide entirely if no data
+    if (_topHoldings.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    bool isOther(String name) => name == 'Other Holdings';
+    bool isCash(String name) => name == 'Cash & Equivalents';
+
+    // OVERFLOW FIX: Find the absolute highest percentage in the list to use as our 100% baseline for the bars
+    double absoluteMaxPercent = 0.0;
+    for (var item in _topHoldings) {
+      if ((item['percentage'] as double) > absoluteMaxPercent) {
+        absoluteMaxPercent = item['percentage'] as double;
+      }
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const SizedBox(height: 16), 
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Portfolio Holdings', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            Text('As of $_holdingsDate', style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w500)),
+            const Text('Top Holdings', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('As of $_holdingsDate', style: const TextStyle(color: Colors.tealAccent, fontSize: 11, fontWeight: FontWeight.bold)),
           ],
         ),
         const SizedBox(height: 16),
         
-        // 1. SECTOR DONUT CHART
         Container(
           padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white.withOpacity(0.02), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.05))),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Sector Allocation', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 24),
               SizedBox(
-                height: 200,
+                height: 220,
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    // Center Text
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(_sectorAllocations.length.toString(), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-                        const Text('Sectors', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                        Text(_topHoldings.length.toString(), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+                        const Text('Top Assets', style: TextStyle(color: Colors.white54, fontSize: 10)),
                       ],
                     ),
-                    // The Donut
                     PieChart(
                       PieChartData(
-                        sectionsSpace: 2, centerSpaceRadius: 60, startDegreeOffset: -90,
-                        sections: _sectorAllocations.asMap().entries.map((entry) {
+                        sectionsSpace: 2, centerSpaceRadius: 45, startDegreeOffset: -90,
+                        sections: _topHoldings.asMap().entries.map((entry) {
                           int idx = entry.key;
-                          double val = entry.value['percentage'] as double;
+                          var stock = entry.value;
+                          String name = stock['name'].toString();
+                          double val = stock['percentage'] as double;
+                          
+                          // DISTINCT MUTED COLORS
+                          Color sectionColor;
+                          if (isOther(name)) {
+                            sectionColor = Colors.white24; // Lighter grey for Others
+                          } else if (isCash(name)) {
+                            sectionColor = Colors.white10; // Darker grey for Cash
+                          } else {
+                            sectionColor = _sectorColors[idx % _sectorColors.length];
+                          }
+
                           return PieChartSectionData(
-                            color: _sectorColors[idx % _sectorColors.length], value: val, radius: 25,
-                            title: '${val.toStringAsFixed(1)}%', titleStyle: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.black87),
+                            color: sectionColor, value: val, radius: 50,
+                            titleStyle: const TextStyle(color: Colors.transparent), showTitle: false,
                           );
                         }).toList(),
                       ),
@@ -558,63 +592,56 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
-              // Sector Legend
-              Wrap(
-                spacing: 12, runSpacing: 8, alignment: WrapAlignment.center,
-                children: _sectorAllocations.asMap().entries.map((entry) {
-                  int idx = entry.key;
-                  String name = entry.value['sector'] as String;
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(width: 10, height: 10, decoration: BoxDecoration(color: _sectorColors[idx % _sectorColors.length], shape: BoxShape.circle)),
-                      const SizedBox(width: 6),
-                      Text(name, style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                    ],
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
+              const SizedBox(height: 32),
 
-        // 2. TOP 10 HOLDINGS LIST
-        Container(
-          padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white.withOpacity(0.02), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.05))),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Top 10 Holdings', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 16),
-              ..._topHoldings.map((stock) {
+              ..._topHoldings.asMap().entries.map((entry) {
+                int idx = entry.key;
+                var stock = entry.value;
+                String name = stock['name'].toString();
                 double percent = stock['percentage'] as double;
-                // Normalize width relative to the largest holding so the bars look good
-                double maxPercent = _topHoldings.first['percentage'] as double;
-                double barWidthFactor = percent / maxPercent;
+                
+                // MATH FIX: Guaranteed to be between 0.0 and 1.0
+                double barWidthFactor = absoluteMaxPercent > 0 ? (percent / absoluteMaxPercent) : 0.0;
+                if (barWidthFactor > 1.0) barWidthFactor = 1.0; 
+
+                // DISTINCT MUTED COLORS
+                Color itemColor;
+                if (isOther(name)) {
+                  itemColor = Colors.white38;
+                } else if (isCash(name)) {
+                  itemColor = Colors.white24;
+                } else {
+                  itemColor = _sectorColors[idx % _sectorColors.length];
+                }
 
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
+                  padding: const EdgeInsets.only(bottom: 16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Expanded(child: Text(stock['name'].toString(), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                          Text('${percent.toStringAsFixed(2)}%', style: const TextStyle(color: Colors.tealAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(width: 8, height: 8, decoration: BoxDecoration(color: itemColor, shape: BoxShape.circle)),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(name, style: TextStyle(color: (isOther(name) || isCash(name)) ? Colors.white54 : Colors.white, fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              ],
+                            ),
+                          ),
+                          Text('${percent.toStringAsFixed(2)}%', style: TextStyle(color: itemColor, fontSize: 13, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      // The subtle progress bar
+                      const SizedBox(height: 8),
                       Container(
-                        height: 6, width: double.infinity,
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(3)),
+                        height: 4, width: double.infinity,
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(2)),
                         child: FractionallySizedBox(
                           alignment: Alignment.centerLeft,
                           widthFactor: barWidthFactor,
-                          child: Container(decoration: BoxDecoration(color: Colors.tealAccent.withOpacity(0.6), borderRadius: BorderRadius.circular(3))),
+                          child: Container(decoration: BoxDecoration(color: itemColor.withOpacity(0.8), borderRadius: BorderRadius.circular(2))),
                         ),
                       ),
                     ],
@@ -715,9 +742,7 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                     _buildInteractiveChart(),
 
                   const SizedBox(height: 24),
-
-                  _buildHoldingsSection(),
-                  const SizedBox(height: 24),
+                  
                   const Text('Performance Breakdown', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.1))),
@@ -733,6 +758,10 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                       ]
                     ),
                   ),
+
+                  _buildHoldingsSection(),
+                  const SizedBox(height: 24),
+                  
                   const SizedBox(height: 40),
                 ],
               ),

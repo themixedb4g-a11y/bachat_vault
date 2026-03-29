@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui';
+import 'dart:math' as math;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:bachat_vault/screens/fund_details_screen.dart';
 
 class CompareFundsScreen extends StatefulWidget {
@@ -19,8 +21,15 @@ class CompareFundsScreen extends StatefulWidget {
 class _CompareFundsScreenState extends State<CompareFundsScreen> {
   late List<String> _categories;
   String? _selectedCategory;
-  List<String?> _selectedFundTickers = [null, null]; // Starts with 2 dropdowns
+  List<String?> _selectedFundTickers = [null, null]; 
   late String _selectedPeriod;
+
+  // --- OVERLAP ENGINE STATE ---
+  bool _showOverlapButton = false;
+  bool _isOverlapExpanded = false;
+  bool _isLoadingOverlap = false;
+  double _totalOverlapPercentage = 0.0;
+  List<Map<String, dynamic>> _overlappingStocks = [];
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
@@ -39,11 +48,11 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
         .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
+        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
+        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
@@ -102,6 +111,235 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     if (_categories.isNotEmpty) {
       _selectedCategory = _categories.contains('Equity') ? 'Equity' : _categories.first;
     }
+  }
+
+  // --- THE OVERLAP ELIGIBILITY ENGINE ---
+  // Silently checks if we have exactly 2 funds, and if both exist in the DB
+  Future<void> _checkOverlapEligibility() async {
+    final validTickers = _selectedFundTickers.where((t) => t != null).toList();
+    
+    if (validTickers.length != 2) {
+      if (mounted) setState(() { _showOverlapButton = false; _isOverlapExpanded = false; });
+      return;
+    }
+
+    final t1 = validTickers[0]!.toString().toUpperCase().trim();
+    final t2 = validTickers[1]!.toString().toUpperCase().trim();
+
+    try {
+      final supabase = Supabase.instance.client;
+      // Fast check: Do we have at least 1 holding row for both tickers?
+      final res1 = await supabase.from('fund_holdings').select('fund_ticker').eq('fund_ticker', t1).limit(1);
+      final res2 = await supabase.from('fund_holdings').select('fund_ticker').eq('fund_ticker', t2).limit(1);
+
+      if (res1.isNotEmpty && res2.isNotEmpty) {
+        if (mounted) setState(() => _showOverlapButton = true);
+      } else {
+        if (mounted) setState(() { _showOverlapButton = false; _isOverlapExpanded = false; });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _showOverlapButton = false; _isOverlapExpanded = false; });
+    }
+  }
+
+  // --- THE OVERLAP MATH ENGINE (EQUITIES ONLY) ---
+  Future<void> _loadOverlapData() async {
+    if (!mounted) return;
+    setState(() => _isLoadingOverlap = true);
+
+    final validTickers = _selectedFundTickers.where((t) => t != null).toList();
+    final t1 = validTickers[0]!.toString().toUpperCase().trim();
+    final t2 = validTickers[1]!.toString().toUpperCase().trim();
+
+    try {
+      final supabase = Supabase.instance.client;
+
+      // 1. Get the latest reporting dates for both funds
+      final d1Res = await supabase.from('fund_holdings').select('fmr_date').eq('fund_ticker', t1).order('fmr_date', ascending: false).limit(1);
+      final d2Res = await supabase.from('fund_holdings').select('fmr_date').eq('fund_ticker', t2).order('fmr_date', ascending: false).limit(1);
+
+      String date1 = d1Res.first['fmr_date'].toString().substring(0, 10);
+      String date2 = d2Res.first['fmr_date'].toString().substring(0, 10);
+
+      // 2. Pull all holdings for those specific dates
+      final h1Res = await supabase.from('fund_holdings').select('stock_ticker, holding_percentage').eq('fund_ticker', t1).eq('fmr_date', date1);
+      final h2Res = await supabase.from('fund_holdings').select('stock_ticker, holding_percentage').eq('fund_ticker', t2).eq('fmr_date', date2);
+
+      // 3. Map Fund 1 for ultra-fast lookup
+      Map<String, double> fund1Map = {};
+      for (var h in h1Res) {
+        fund1Map[h['stock_ticker'].toString().trim()] = double.tryParse(h['holding_percentage'].toString()) ?? 0.0;
+      }
+
+      // 4. The Math: Find the Minimum Intersection (Ignoring Cash/Others)
+      double totalOverlap = 0.0;
+      List<Map<String, dynamic>> sharedDetails = [];
+      List<String> sharedTickers = [];
+
+      for (var h in h2Res) {
+        String ticker = h['stock_ticker'].toString().trim();
+        
+        // --- THE FIX: Skip non-equity buckets entirely ---
+        if (ticker == 'CASH' || ticker == 'OTHER') continue;
+
+        double p2 = double.tryParse(h['holding_percentage'].toString()) ?? 0.0;
+        
+        if (fund1Map.containsKey(ticker)) {
+          double p1 = fund1Map[ticker]!;
+          double intersection = math.min(p1, p2); // E.g. Fund A: 10%, Fund B: 7% -> Overlap: 7%
+          
+          if (intersection > 0) {
+            totalOverlap += intersection;
+            sharedTickers.add(ticker);
+            sharedDetails.add({
+              'ticker': ticker,
+              'overlap': intersection,
+              'p1': p1,
+              'p2': p2
+            });
+          }
+        }
+      }
+
+      // 5. Fetch beautiful company names
+      if (sharedTickers.isNotEmpty) {
+        final stocksResponse = await supabase.from('master_stocks').select('ticker, company_name').inFilter('ticker', sharedTickers);
+        for (var detail in sharedDetails) {
+          var meta = (stocksResponse as List).firstWhere(
+            (s) => s['ticker'].toString().trim() == detail['ticker'], 
+            orElse: () => {'company_name': detail['ticker']}
+          );
+          detail['name'] = meta['company_name'].toString();
+        }
+      }
+
+      // Sort by highest overlap first
+      sharedDetails.sort((a, b) => (b['overlap'] as double).compareTo(a['overlap'] as double));
+
+      if (mounted) {
+        setState(() {
+          _totalOverlapPercentage = totalOverlap;
+          _overlappingStocks = sharedDetails;
+          _isLoadingOverlap = false;
+        });
+      }
+
+    } catch (e) {
+      debugPrint("Overlap Match Error: $e");
+      if (mounted) setState(() => _isLoadingOverlap = false);
+    }
+  }
+
+  // --- OVERLAP UI WIDGET (TEAL THEME) ---
+  Widget _buildOverlapAnalyzer() {
+    if (!_showOverlapButton) return const SizedBox.shrink();
+
+    if (!_isOverlapExpanded) {
+      return Center(
+        child: OutlinedButton.icon(
+          // Changed to tealAccent
+          icon: const Icon(Icons.pie_chart_outline, color: Colors.tealAccent, size: 20),
+          label: const Text('✨ Overlap Analyzer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            // Changed to tealAccent
+            side: BorderSide(color: Colors.tealAccent.withOpacity(0.5)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            // Changed to tealAccent
+            backgroundColor: Colors.tealAccent.withOpacity(0.05)
+          ),
+          onPressed: () {
+            // Future Paywall Hook goes here!
+            setState(() { _isOverlapExpanded = true; });
+            _loadOverlapData();
+          },
+        ),
+      );
+    }
+
+    double maxOverlap = _overlappingStocks.isNotEmpty ? (_overlappingStocks.first['overlap'] as double) : 100.0;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(20),
+      // Changed to tealAccent
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.02), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.tealAccent.withOpacity(0.3))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('✨ Portfolio Overlap', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                onPressed: () => setState(() => _isOverlapExpanded = false),
+              )
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          if (_isLoadingOverlap)
+            // Changed to tealAccent
+            const SizedBox(height: 100, child: Center(child: CircularProgressIndicator(color: Colors.tealAccent)))
+          else if (_overlappingStocks.isEmpty)
+            const SizedBox(height: 100, child: Center(child: Text('These funds are perfectly diversified.\nThey share 0 assets.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))))
+          else ...[
+            // Total Overlap Header
+            Center(
+              child: Column(
+                children: [
+                  // Changed to tealAccent
+                  Text('${_totalOverlapPercentage.toStringAsFixed(1)}%', style: const TextStyle(color: Colors.tealAccent, fontSize: 48, fontWeight: FontWeight.w800, height: 1.0)),
+                  const SizedBox(height: 4),
+                  const Text('Total Shared Assets', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text('Top Shared Holdings:', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            
+            // Shared Holdings Breakdown
+            ..._overlappingStocks.take(5).map((stock) {
+              double currentOverlap = stock['overlap'] as double;
+              double barWidthFactor = maxOverlap > 0 ? (currentOverlap / maxOverlap) : 0.0;
+              if (barWidthFactor > 1.0) barWidthFactor = 1.0; 
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(stock['name'].toString(), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 6, decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(3)),
+                            child: FractionallySizedBox(
+                              alignment: Alignment.centerLeft, 
+                              widthFactor: barWidthFactor, 
+                              // Changed to tealAccent
+                              child: Container(decoration: BoxDecoration(color: Colors.tealAccent.withOpacity(0.8), borderRadius: BorderRadius.circular(3))),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Changed to tealAccent
+                        Text('${currentOverlap.toStringAsFixed(1)}% overlap', style: const TextStyle(color: Colors.tealAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                      ],
+                    )
+                  ],
+                ),
+              );
+            }),
+          ]
+        ],
+      ),
+    );
   }
 
   List<Map<String, dynamic>> _getFundsInCategory() {
@@ -284,6 +522,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                               _selectedCategory = val;
                               _selectedFundTickers = [null, null];
                             });
+                            _checkOverlapEligibility(); // Trigger Check
                           }
                         },
                       ),
@@ -308,14 +547,20 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                                 style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                                 hint: const Text('Choose a fund...', style: TextStyle(color: Colors.white38)),
                                 items: availableFunds.map((f) => DropdownMenuItem(value: f['ticker'] as String, child: Text(_cleanFundName(f['fund_name'] as String), overflow: TextOverflow.ellipsis))).toList(),
-                                onChanged: (val) { setState(() { _selectedFundTickers[index] = val; }); },
+                                onChanged: (val) { 
+                                  setState(() { _selectedFundTickers[index] = val; }); 
+                                  _checkOverlapEligibility(); // Trigger Check
+                                },
                               ),
                             ),
                           ),
                           if (index >= 2) 
                             IconButton(
                               icon: const Icon(Icons.close, color: Colors.redAccent, size: 20),
-                              onPressed: () { setState(() { _selectedFundTickers.removeAt(index); }); },
+                              onPressed: () { 
+                                setState(() { _selectedFundTickers.removeAt(index); }); 
+                                _checkOverlapEligibility(); // Trigger Check
+                              },
                             )
                         ],
                       ),
@@ -325,7 +570,10 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                   if (_selectedFundTickers.length < 4)
                     Center(
                       child: TextButton.icon(
-                        onPressed: () { setState(() { _selectedFundTickers.add(null); }); },
+                        onPressed: () { 
+                          setState(() { _selectedFundTickers.add(null); }); 
+                          _checkOverlapEligibility(); // Trigger Check
+                        },
                         icon: const Icon(Icons.add_circle_outline, color: Colors.tealAccent),
                         label: const Text('Add Another Fund', style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.w600)),
                       ),
@@ -343,6 +591,10 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
+
+                  // --- THE NEW OVERLAP ANALYZER WIDGET ---
+                  _buildOverlapAnalyzer(),
+                  const SizedBox(height: 16),
 
                   ..._selectedFundTickers.map((ticker) {
                     if (ticker == null) return const SizedBox.shrink();
