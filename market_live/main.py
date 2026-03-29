@@ -50,8 +50,17 @@ def to_float(val_str):
 def sync_live_markets():
     print("📈 Initiating Live Market Scrape...")
 
-    # Define the targets and the specific database column for their weight
+    # FETCH GUARDRAIL: Get all valid tickers from master_stocks to prevent Foreign Key crashes
+    try:
+        master_res = supabase.table("master_stocks").select("ticker").execute()
+        valid_tickers = {row["ticker"] for row in master_res.data}
+    except Exception as e:
+        print(f"❌ Error fetching master_stocks: {e}")
+        return
+
+    # Define the targets. ALLSHR goes FIRST to establish the true global baseline.
     indices = [
+        ("ALLSHR", "https://dps.psx.com.pk/indices/ALLSHR", None),
         ("KSE100", "https://dps.psx.com.pk/indices/KSE100", "kse100_weight"),
         ("KMI30", "https://dps.psx.com.pk/indices/KMI30", "kmi30_weight"),
         ("PSXDIV20", "https://dps.psx.com.pk/indices/PSXDIV20", "psxdiv20_weight"),
@@ -75,7 +84,6 @@ def sync_live_markets():
             # Dynamically map the columns based on headers so it never breaks if PSX changes the layout
             headers = [th.text.strip().upper() for th in table.find_all("th")]
 
-            # Find index positions safely
             # Find index positions safely using partial matches to avoid hidden space errors
             col_idx = {
                 "symbol": next((i for i, h in enumerate(headers) if "SYMBOL" in h), 0),
@@ -95,7 +103,11 @@ def sync_live_markets():
                     (i for i, h in enumerate(headers) if "CHANGE" in h and "%" in h), -1
                 ),
                 "weight": next(
-                    (i for i, h in enumerate(headers) if "WTG" in h or "WEIGHT" in h),
+                    (
+                        i
+                        for i, h in enumerate(headers)
+                        if "WTG" in h or "WGT" in h or "WEIGHT" in h
+                    ),
                     -1,
                 ),
                 "volume": next((i for i, h in enumerate(headers) if "VOLUME" in h), -1),
@@ -151,7 +163,7 @@ def sync_live_markets():
                     else 0.0
                 )
 
-                # If we haven't seen this stock yet in another index, create its baseline profile
+                # If we haven't seen this stock yet in an earlier index, create its baseline profile
                 if base_ticker not in master_stocks_dict:
                     master_stocks_dict[base_ticker] = {
                         "ticker": base_ticker,
@@ -167,14 +179,19 @@ def sync_live_markets():
                         "last_updated": current_time_pk,
                     }
 
-                # Apply the specific weight for the index we are currently looping through
-                master_stocks_dict[base_ticker][weight_col] = weight
+                # Apply the specific weight for the index we are currently looping through (Skip for ALLSHR)
+                if weight_col and col_idx["weight"] != -1:
+                    master_stocks_dict[base_ticker][weight_col] = weight
 
         except Exception as e:
             print(f"   ❌ Error scraping {index_name}: {e}")
 
     # --- 4. DATABASE UPSERT ---
-    final_batch = list(master_stocks_dict.values())
+    # SMART FILTER: Only keep the stocks that actually exist in your master_stocks table
+    final_batch = [
+        data for ticker, data in master_stocks_dict.items() if ticker in valid_tickers
+    ]
+
     if final_batch:
         try:
             # We must upsert in chunks to not overwhelm the Supabase API (batching by 50)
