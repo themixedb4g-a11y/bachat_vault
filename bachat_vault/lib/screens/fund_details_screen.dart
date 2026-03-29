@@ -29,6 +29,17 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
   String _chartPeriod = '1Y';
   bool _showKse100 = false;
   bool _showGold = false;
+  
+  // Holdings State
+  bool _isLoadingHoldings = true;
+  String _holdingsDate = '';
+  List<Map<String, dynamic>> _sectorAllocations = [];
+  List<Map<String, dynamic>> _topHoldings = [];
+  final List<Color> _sectorColors = [
+    Colors.tealAccent, Colors.blueAccent, Colors.purpleAccent, 
+    Colors.orangeAccent, Colors.pinkAccent, Colors.yellowAccent, 
+    Colors.cyanAccent, Colors.lightGreenAccent, Colors.redAccent, Colors.indigoAccent
+  ];
 
   List<FlSpot> _fundSpots = [];
   List<FlSpot> _kseSpots = [];
