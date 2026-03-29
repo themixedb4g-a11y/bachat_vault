@@ -59,20 +59,16 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
 
   // --- THE FINANCIAL ENGINE: BASE 100 COMPOUNDING ---
   Future<void> _loadChartData() async {
-    setState(() {
-      _isLoadingChart = true;
-    });
+    if (!mounted) return;
+    setState(() => _isLoadingChart = true);
 
     try {
       final supabase = Supabase.instance.client;
       final String ticker = widget.fund['ticker'];
       final bool isShariah = (widget.fund['is_shariah'] == 1 || widget.fund['is_shariah'] == '1' || widget.fund['is_shariah'] == true);
       final String indexTicker = isShariah ? 'KMI30' : 'KSE100';
-      
-      // --- NEW: Identify if the main ticker is actually a benchmark ---
       final bool isBenchmark = ['KSE100', 'KMI30', 'GOLD_24K', 'CPI_PK'].contains(ticker);
 
-      // 1. Determine Date Range
       DateTime startDate = DateTime.now();
       switch (_chartPeriod) {
         case '1M': startDate = DateTime.now().subtract(const Duration(days: 30)); break;
@@ -85,13 +81,12 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       }
       final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
 
-      // 2. Fetch Data Concurrently (SMART ROUTING)
       final fundFuture = isBenchmark 
           ? supabase.from('benchmarks').select('validity_date, value').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true)
           : supabase.from('daily_nav').select('validity_date, nav').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true);
           
       final payoutFuture = isBenchmark 
-          ? Future.value([]) // Benchmarks don't have payouts
+          ? Future.value([]) 
           : supabase.from('payout_history').select('payout_date, payout_amount, ex_nav').eq('ticker', ticker).gte('payout_date', startDateStr);
       
       final indexFuture = _showKse100 ? supabase.from('benchmarks').select('validity_date, value').eq('ticker', indexTicker).gte('validity_date', startDateStr).order('validity_date', ascending: true) : Future.value([]);
@@ -104,30 +99,15 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       final indexData = responses[2] as List<dynamic>;
       final goldData = responses[3] as List<dynamic>;
 
-      // Ensure we have at least 2 points to draw a line
-      if (fundData.length < 2) {
-        setState(() { 
-          _isLoadingChart = false; 
-          _fundSpots = []; 
-        });
-        return;
+      List<FlSpot> fundSpots = [];
+      double startNav = 1.0; 
+      
+      // Safe find for starting NAV
+      for (var row in fundData) {
+        double val = double.tryParse(row[isBenchmark ? 'value' : 'nav'].toString()) ?? 0.0;
+        if (val > 0) { startNav = val; break; }
       }
 
-      // 3. Process Main Data (Base 100 + Payout Reinvestment)
-      List<FlSpot> fundSpots = [];
-      
-      // SAFEGUARD: Find the first actual valid NAV/Value greater than 0
-      var validStartRow = fundData.firstWhere(
-        (row) {
-          double val = isBenchmark ? (row['value'] as num).toDouble() : (row['nav'] as num).toDouble();
-          return val > 0;
-        }, 
-        orElse: () => fundData.first
-      );
-      
-      double startNav = isBenchmark ? (validStartRow['value'] as num).toDouble() : (validStartRow['nav'] as num).toDouble();
-      if (startNav <= 0) startNav = 1.0; 
-      
       double currentUnits = 100.0 / startNav; 
       double localMinY = 999999;
       double localMaxY = -999999;
@@ -135,15 +115,15 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       for (var row in fundData) {
         String dateStr = row['validity_date'].toString();
         DateTime date = DateTime.parse(dateStr);
-        double nav = isBenchmark ? (row['value'] as num).toDouble() : (row['nav'] as num).toDouble();
+        
+        // ULTIMATE ZERO SHIELD
+        double nav = double.tryParse(row[isBenchmark ? 'value' : 'nav'].toString()) ?? 0.0;
+        if (nav <= 0) continue; 
 
-        if (nav <= 0) continue; // The zero shield
-
-        // Reinvest payouts (will gracefully do nothing for benchmarks since payoutData is empty)
         var dailyPayouts = payoutData.where((p) => p['payout_date'].toString().startsWith(dateStr));
         for (var p in dailyPayouts) {
-          double pAmt = (p['payout_amount'] as num).toDouble();
-          double exNav = (p['ex_nav'] as num).toDouble();
+          double pAmt = double.tryParse(p['payout_amount'].toString()) ?? 0.0;
+          double exNav = double.tryParse(p['ex_nav'].toString()) ?? 0.0;
           if (exNav > 0) {
             currentUnits = currentUnits * (1 + (pAmt / exNav));
           }
@@ -153,49 +133,49 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         double xValue = date.millisecondsSinceEpoch.toDouble();
         
         fundSpots.add(FlSpot(xValue, base100Value));
-
         if (base100Value < localMinY) localMinY = base100Value;
         if (base100Value > localMaxY) localMaxY = base100Value;
       }
 
-      // 4. Process Benchmark Overlays (Simple Base 100)
+      // SAFEGUARD: Ensure we actually have data to draw!
+      if (fundSpots.length < 2) {
+        if (mounted) setState(() { _isLoadingChart = false; _fundSpots = []; });
+        return;
+      }
+
       List<FlSpot> processBenchmark(List<dynamic> data) {
         List<FlSpot> spots = [];
         if (data.isEmpty) return spots;
-        double startVal = (data.first['value'] as num).toDouble();
+        double startVal = double.tryParse(data.first['value'].toString()) ?? 1.0;
         if (startVal <= 0) startVal = 1.0;
         for (var row in data) {
           DateTime date = DateTime.parse(row['validity_date'].toString());
-          double val = (row['value'] as num).toDouble();
+          double val = double.tryParse(row['value'].toString()) ?? 0.0;
           if (val <= 0) continue;
           double base100Value = (val / startVal) * 100.0;
           
           if (base100Value < localMinY) localMinY = base100Value;
           if (base100Value > localMaxY) localMaxY = base100Value;
-          
           spots.add(FlSpot(date.millisecondsSinceEpoch.toDouble(), base100Value));
         }
         return spots;
       }
 
-      // 5. Update State
-      setState(() {
-        _fundSpots = fundSpots;
-        _kseSpots = processBenchmark(indexData);
-        _goldSpots = processBenchmark(goldData);
-        
-        _minX = fundSpots.first.x;
-        _maxX = fundSpots.last.x;
-        
-        _minY = localMinY * 0.95;
-        _maxY = localMaxY * 1.05;
-        
-        _isLoadingChart = false;
-      });
-
+      if (mounted) {
+        setState(() {
+          _fundSpots = fundSpots;
+          _kseSpots = processBenchmark(indexData);
+          _goldSpots = processBenchmark(goldData);
+          _minX = fundSpots.first.x;
+          _maxX = fundSpots.last.x;
+          _minY = localMinY * 0.95;
+          _maxY = localMaxY * 1.05;
+          _isLoadingChart = false;
+        });
+      }
     } catch (e) {
       debugPrint("Chart Fetch Error: $e");
-      setState(() { _isLoadingChart = false; });
+      if (mounted) setState(() => _isLoadingChart = false);
     }
   }
 
@@ -205,77 +185,70 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       final supabase = Supabase.instance.client;
       final String ticker = widget.fund['ticker'];
 
-      // 1. Find the most recent date this fund reported holdings
       final dateResponse = await supabase.from('fund_holdings')
           .select('fmr_date').eq('fund_ticker', ticker).order('fmr_date', ascending: false).limit(1);
           
       if (dateResponse.isEmpty) {
-        setState(() => _isLoadingHoldings = false);
+        if (mounted) setState(() => _isLoadingHoldings = false);
         return;
       }
       
       String latestDate = dateResponse.first['fmr_date'].toString();
 
-      // 2. Fetch the holdings for that specific date
       final holdingsResponse = await supabase.from('fund_holdings')
           .select('stock_ticker, holding_percentage')
           .eq('fund_ticker', ticker).eq('fmr_date', latestDate);
 
       if (holdingsResponse.isEmpty) {
-        setState(() => _isLoadingHoldings = false);
+        if (mounted) setState(() => _isLoadingHoldings = false);
         return;
       }
 
-      // 3. Fetch the metadata for these specific stocks
       final List<String> stockTickers = holdingsResponse.map((h) => h['stock_ticker'].toString()).toList();
+      if (stockTickers.isEmpty) {
+        if (mounted) setState(() => _isLoadingHoldings = false);
+        return;
+      }
+
+      // Safe Supabase Array querying (.in_ instead of .inFilter)
       final stocksResponse = await supabase.from('master_stocks')
           .select('ticker, company_name, sector')
-          .inFilter('ticker', stockTickers);
+          .in_('ticker', stockTickers);
 
-      // 4. Merge and Process the Data
       Map<String, double> sectorMap = {};
       List<Map<String, dynamic>> processedHoldings = [];
 
       for (var holding in holdingsResponse) {
         String sTicker = holding['stock_ticker'].toString();
-        double percent = (holding['holding_percentage'] as num).toDouble();
+        // Safe Number Parsing
+        double percent = double.tryParse(holding['holding_percentage'].toString()) ?? 0.0;
         
-        // Find matching stock details (Fallback to 'Others/Cash' if it's a T-Bill or unlisted)
         var stockMeta = stocksResponse.firstWhere((s) => s['ticker'] == sTicker, orElse: () => {'company_name': sTicker, 'sector': 'Others / Cash Equivalents'});
         
         String sector = stockMeta['sector'].toString();
         String name = stockMeta['company_name'].toString();
 
-        // Add to Sector groupings
         sectorMap[sector] = (sectorMap[sector] ?? 0) + percent;
-
-        // Add to individual list
-        processedHoldings.add({
-          'ticker': sTicker,
-          'name': name,
-          'sector': sector,
-          'percentage': percent,
-        });
+        processedHoldings.add({'ticker': sTicker, 'name': name, 'sector': sector, 'percentage': percent});
       }
 
-      // Sort Sectors Highest to Lowest
       var sortedSectors = sectorMap.entries.map((e) => {'sector': e.key, 'percentage': e.value}).toList();
       sortedSectors.sort((a, b) => (b['percentage'] as double).compareTo(a['percentage'] as double));
 
-      // Sort Stocks Highest to Lowest and take Top 10
       processedHoldings.sort((a, b) => (b['percentage'] as double).compareTo(a['percentage'] as double));
       List<Map<String, dynamic>> top10 = processedHoldings.take(10).toList();
 
-      setState(() {
-        _holdingsDate = DateFormat('MMMM yyyy').format(DateTime.parse(latestDate));
-        _sectorAllocations = sortedSectors;
-        _topHoldings = top10;
-        _isLoadingHoldings = false;
-      });
-
+      if (mounted) {
+        setState(() {
+          _holdingsDate = DateFormat('MMMM yyyy').format(DateTime.parse(latestDate));
+          _sectorAllocations = sortedSectors;
+          _topHoldings = top10;
+          _isLoadingHoldings = false;
+        });
+      }
     } catch (e) {
       debugPrint("Holdings Fetch Error: $e");
-      setState(() => _isLoadingHoldings = false);
+      if (mounted) setState(() => _isLoadingHoldings = false);
     }
   }
 
@@ -449,7 +422,10 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                         ),
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
-                            showTitles: true, reservedSize: 30, interval: (_maxX - _minX) / 3, // Show roughly 3-4 dates on bottom
+                            showTitles: true, 
+                            reservedSize: 30, 
+                            // GRID SAFEGUARD: Prevents Division by Zero crash
+                            interval: (_maxX - _minX) > 0 ? (_maxX - _minX) / 3 : 86400000.0 * 30,
                             getTitlesWidget: (value, meta) {
                               DateTime date = DateTime.fromMillisecondsSinceEpoch(value.toInt());
                               return Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('MMM yy').format(date), style: const TextStyle(color: Colors.white38, fontSize: 10)));
