@@ -238,15 +238,15 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
       return Center(
         child: OutlinedButton.icon(
           // Changed to tealAccent
-          icon: const Icon(Icons.pie_chart_outline, color: Colors.tealAccent, size: 20),
+          icon: const Icon(Icons.pie_chart_outline, color: Colors.purpleAccent, size: 25),
           label: const Text('✨ Overlap Analyzer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             // Changed to tealAccent
-            side: BorderSide(color: Colors.tealAccent.withOpacity(0.5)),
+            side: BorderSide(color: Colors.purpleAccent.withOpacity(0.5)),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
             // Changed to tealAccent
-            backgroundColor: Colors.tealAccent.withOpacity(0.05)
+            backgroundColor: Colors.purpleAccent.withOpacity(0.05)
           ),
           onPressed: () {
             // Future Paywall Hook goes here!
@@ -263,7 +263,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(20),
       // Changed to tealAccent
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.02), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.tealAccent.withOpacity(0.3))),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.02), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.purpleAccent.withOpacity(0.3))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -282,7 +282,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
           
           if (_isLoadingOverlap)
             // Changed to tealAccent
-            const SizedBox(height: 100, child: Center(child: CircularProgressIndicator(color: Colors.tealAccent)))
+            const SizedBox(height: 100, child: Center(child: CircularProgressIndicator(color: Colors.purpleAccent)))
           else if (_overlappingStocks.isEmpty)
             const SizedBox(height: 100, child: Center(child: Text('These funds are perfectly diversified.\nThey share 0 assets.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))))
           else ...[
@@ -291,7 +291,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
               child: Column(
                 children: [
                   // Changed to tealAccent
-                  Text('${_totalOverlapPercentage.toStringAsFixed(1)}%', style: const TextStyle(color: Colors.tealAccent, fontSize: 48, fontWeight: FontWeight.w800, height: 1.0)),
+                  Text('${_totalOverlapPercentage.toStringAsFixed(1)}%', style: const TextStyle(color: Colors.purpleAccent, fontSize: 48, fontWeight: FontWeight.w800, height: 1.0)),
                   const SizedBox(height: 4),
                   const Text('Total Shared Assets', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
                 ],
@@ -323,13 +323,13 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                               alignment: Alignment.centerLeft, 
                               widthFactor: barWidthFactor, 
                               // Changed to tealAccent
-                              child: Container(decoration: BoxDecoration(color: Colors.tealAccent.withOpacity(0.8), borderRadius: BorderRadius.circular(3))),
+                              child: Container(decoration: BoxDecoration(color: Colors.purpleAccent.withOpacity(0.8), borderRadius: BorderRadius.circular(3))),
                             ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         // Changed to tealAccent
-                        Text('${currentOverlap.toStringAsFixed(1)}% overlap', style: const TextStyle(color: Colors.tealAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                        Text('${currentOverlap.toStringAsFixed(1)}% overlap', style: const TextStyle(color: Colors.purpleAccent, fontSize: 11, fontWeight: FontWeight.bold)),
                       ],
                     )
                   ],
