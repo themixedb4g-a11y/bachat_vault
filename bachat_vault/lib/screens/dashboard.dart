@@ -807,7 +807,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               color: Colors.white,
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
+              letterSpacing: 1,
             ),
           ),
         ),
@@ -1230,7 +1230,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 40,
-                            vertical: 8,
+                            vertical: 4,
                           ),
                           child: Center(
                             child: IntrinsicWidth(
@@ -1244,7 +1244,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 40,
+                                  fontSize: 35,
                                   fontWeight: FontWeight.w800,
                                 ),
                                 decoration: const InputDecoration(
@@ -1281,7 +1281,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             _buildDashFilterBtn('3Y'),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
 
                         SizedBox(
                           // Perfectly balanced height to fit 5 cards without overflow OR massive gaps!
@@ -1302,13 +1302,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                             ],
                           ),
                         ),
-                        const SizedBox(height: 0),
+                        const SizedBox(height: 4),
 
                         _buildMarketOverviewSection(
                           _selectedDashboardPeriod,
                           dbSortKey,
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
 
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24.0),
