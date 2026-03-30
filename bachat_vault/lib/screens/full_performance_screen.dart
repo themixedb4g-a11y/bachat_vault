@@ -251,8 +251,11 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       final DateFormat dbFormat = DateFormat('yyyy-MM-dd');
 
       // 1. Define our safe 7-day lookback windows
-      final startLimit = dbFormat.format(_customStartDate!.subtract(const Duration(days: 7)));
-      final startTarget = dbFormat.format(_customStartDate!);
+      // --- THE FIX: Shift start date back 1 day to capture the true Base NAV ---
+      DateTime trueBaseDate = _customStartDate!.subtract(const Duration(days: 1));
+      
+      final startLimit = dbFormat.format(trueBaseDate.subtract(const Duration(days: 7)));
+      final startTarget = dbFormat.format(trueBaseDate);
       
       final endLimit = dbFormat.format(_customEndDate!.subtract(const Duration(days: 7)));
       final endTarget = dbFormat.format(_customEndDate!);
