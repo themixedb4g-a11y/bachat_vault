@@ -569,11 +569,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Align(
       alignment: Alignment.topCenter,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20), // Reduced from 24
           border: Border.all(color: Colors.white.withOpacity(0.1)),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -585,35 +584,21 @@ class _DashboardScreenState extends State<DashboardScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.tealAccent,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 16),
+            Text(title, style: const TextStyle(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+            const SizedBox(height: 12), // Reduced gap
             if (topFunds.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(
-                  child: Text(
-                    "No funds available.",
-                    style: TextStyle(color: Colors.white54),
-                  ),
-                ),
-              )
+              const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: Text("No funds available.", style: TextStyle(color: Colors.white54))))
             else
               ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
+                padding: EdgeInsets.zero, // Removes default ListView padding
                 itemCount: topFunds.length,
-                separatorBuilder: (context, index) =>
-                    const Divider(color: Colors.white12, height: 24),
+                separatorBuilder: (context, index) => const Divider(color: Colors.white12, height: 16), // Reduced divider height
                 itemBuilder: (context, index) {
+                  // ... Keep all the math and variables exactly the same ...
                   final fund = topFunds[index];
+                  // ... (Keep the rest of your itemBuilder logic) ...
                   final name = _cleanFundName(fund['fund_name'] ?? 'Unknown');
                   final isShariah =
                       (fund['is_shariah'] == 1 ||
@@ -733,61 +718,35 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     return GestureDetector(
       onTap: () {
-        // Now opens the REAL page with the REAL data!
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => FundDetailsScreen(
-              fund: fund,
-              investmentAmount: _investmentAmount,
-              benchmarkStats: _benchmarkStats,
-            ),
-          ),
-        );
+        Navigator.push(context, MaterialPageRoute(builder: (context) => FundDetailsScreen(fund: fund, investmentAmount: _investmentAmount, benchmarkStats: _benchmarkStats)));
       },
       child: Container(
-        width: 110,
-        padding: const EdgeInsets.all(12),
+        width: 105, // Slightly narrower
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), // Massive padding reduction here
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12), // Tighter corners
           border: Border.all(color: Colors.white.withOpacity(0.1)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, // Ensures it wraps tightly
           children: [
             Row(
               children: [
-                Icon(icon, color: color, size: 14),
-                const SizedBox(width: 6),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Icon(icon, color: color, size: 12), // Smaller icon
+                const SizedBox(width: 4),
+                Text(title, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4), // Tighter gap
             Text(
               displayProfit,
-              style: TextStyle(
-                color: statColor,
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                overflow: TextOverflow.ellipsis,
-              ),
+              style: TextStyle(color: statColor, fontSize: 12, fontWeight: FontWeight.w800, overflow: TextOverflow.ellipsis),
             ),
-            const SizedBox(height: 2),
             Text(
               '${percent >= 0 ? '+' : ''}${percent.toStringAsFixed(2)}%',
-              style: TextStyle(
-                color: statColor.withOpacity(0.8),
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: statColor.withOpacity(0.8), fontSize: 9, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -795,23 +754,23 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildMarketOverviewSection(String periodLabel, String dbKey) {
+  Widget _buildMarketOverviewSection(String dbKey) { // Removed periodLabel parameter
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24.0),
           child: Text(
-            'Market Benchmarks ($periodLabel)',
-            style: const TextStyle(
+            'Market Benchmarks', // Removed the dynamic (1Y) text
+            style: TextStyle(
               color: Colors.white,
-              fontSize: 18,
+              fontSize: 16, // Slightly tighter font size
               fontWeight: FontWeight.bold,
               letterSpacing: 1,
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12), // Tighter gap
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
@@ -823,32 +782,11 @@ class _DashboardScreenState extends State<DashboardScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildMarketCard(
-                  'KSE 100',
-                  'PSX Index',
-                  Icons.show_chart,
-                  Colors.blueAccent,
-                  'KSE100',
-                  dbKey,
-                ),
+                _buildMarketCard('KSE 100', 'PSX Index', Icons.show_chart, Colors.blueAccent, 'KSE100', dbKey),
                 const SizedBox(width: 12),
-                _buildMarketCard(
-                  'KMI 30',
-                  'Islamic Index',
-                  Icons.mosque_outlined,
-                  Colors.green,
-                  'KMI30',
-                  dbKey,
-                ),
+                _buildMarketCard('KMI 30', 'Islamic Index', Icons.mosque_outlined, Colors.green, 'KMI30', dbKey),
                 const SizedBox(width: 12),
-                _buildMarketCard(
-                  'Gold',
-                  'Per Tola',
-                  Icons.circle,
-                  Colors.amberAccent,
-                  'GOLD_24K',
-                  dbKey,
-                ),
+                _buildMarketCard('Gold', 'Per Tola', Icons.circle, Colors.amberAccent, 'GOLD_24K', dbKey),
               ],
             ),
           ),
@@ -881,6 +819,10 @@ class _DashboardScreenState extends State<DashboardScreen>
         : _selectedDashboardPeriod == '3Y'
         ? 'return_3y'
         : 'return_1y';
+
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double cardWidth = screenWidth * 0.90; 
+    final double sidePadding = (screenWidth - cardWidth) / 2;
 
     return Theme(
       data: Theme.of(context).copyWith(
@@ -1216,99 +1158,103 @@ class _DashboardScreenState extends State<DashboardScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 16),
-                        const Center(
-                          child: Text(
-                            'Your Investment Value',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
+                        // 1. Tighter top spacing
+                      const SizedBox(height: 12), 
+                      const Center(
+                        child: Text(
+                          'Your Investment Value',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13, // Slightly smaller
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 40,
-                            vertical: 4,
-                          ),
-                          child: Center(
-                            child: IntrinsicWidth(
-                              child: TextField(
-                                controller: _investmentController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                inputFormatters: [IndianNumberFormatter()],
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 35,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                                decoration: const InputDecoration(
-                                  prefixText: 'PKR ',
-                                  prefixStyle: TextStyle(
-                                    color: Colors.tealAccent,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                  border: InputBorder.none,
-                                ),
-                                onChanged: (val) {
-                                  setState(() {
-                                    _investmentAmount =
-                                        double.tryParse(
-                                          val.replaceAll(',', ''),
-                                        ) ??
-                                        0.0;
-                                  });
-                                },
+                      ),
+                      // 2. Removed the massive vertical: 4 padding on the TextField
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 40),
+                        child: Center(
+                          child: IntrinsicWidth(
+                            child: TextField(
+                              controller: _investmentController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              inputFormatters: [IndianNumberFormatter()],
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 32, // Slightly smaller to fit better
+                                fontWeight: FontWeight.w800,
+                                height: 1.2, // Tighter line height
                               ),
+                              decoration: const InputDecoration(
+                                prefixText: 'PKR ',
+                                prefixStyle: TextStyle(
+                                  color: Colors.tealAccent,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                border: InputBorder.none,
+                                isDense: true, // Forces the textfield to shrink-wrap its content
+                                contentPadding: EdgeInsets.zero, // Removes hidden default padding
+                              ),
+                              onChanged: (val) {
+                                setState(() {
+                                  _investmentAmount = double.tryParse(val.replaceAll(',', '')) ?? 0.0;
+                                });
+                              },
                             ),
                           ),
                         ),
-                        const SizedBox(height: 4),
+                      ),
+                      
+                      const SizedBox(height: 8), // Tight gap to filters
 
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildDashFilterBtn('30D'),
-                            const SizedBox(width: 12),
-                            _buildDashFilterBtn('1Y'),
-                            const SizedBox(width: 12),
-                            _buildDashFilterBtn('3Y'),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
+                      // 3. Filter Buttons
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildDashFilterBtn('30D'),
+                          const SizedBox(width: 8), // Tighter gap between buttons
+                          _buildDashFilterBtn('1Y'),
+                          const SizedBox(width: 8),
+                          _buildDashFilterBtn('3Y'),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 16), // Gap before Benchmarks
 
-                        SizedBox(
-                          // Perfectly balanced height to fit 5 cards without overflow OR massive gaps!
-                          height: 380,
-                          child: PageView(
-                            controller: _pageController,
-                            physics: const BouncingScrollPhysics(),
-                            children: [
-                              _buildTop5Card('Top 5 Equity Funds', [
-                                'Equity',
-                              ], dbSortKey),
-                              _buildTop5Card('Top 5 ETFs', [
-                                'Exchange Traded Fund',
-                              ], dbSortKey),
-                              _buildTop5Card('Top 5 Money Market', [
-                                'Money Market',
-                              ], dbSortKey),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 4),
+                      // 4. Benchmarks Moved UP and made compact
+                      _buildMarketOverviewSection(dbSortKey),
 
-                        _buildMarketOverviewSection(
-                          _selectedDashboardPeriod,
-                          dbSortKey,
-                        ),
-                        const SizedBox(height: 16),
+                      const SizedBox(height: 16), // Gap before Top 5 Cards
+
+// --- TOP 5 CARDS (DYNAMIC HEIGHT CAROUSEL) ---
+SingleChildScrollView(
+  scrollDirection: Axis.horizontal,
+  physics: const BouncingScrollPhysics(),
+  // Apply the dynamic padding here:
+  padding: EdgeInsets.symmetric(horizontal: sidePadding), 
+  child: Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(
+        width: cardWidth,
+        child: _buildTop5Card('Top 5 Equity Funds', ['Equity'], dbSortKey),
+      ),
+      const SizedBox(width: 12), // Explicit, clean gap between cards
+      SizedBox(
+        width: cardWidth,
+        child: _buildTop5Card('Top 5 ETFs', ['Exchange Traded Fund'], dbSortKey),
+      ),
+      const SizedBox(width: 12), // Explicit, clean gap between cards
+      SizedBox(
+        width: cardWidth,
+        child: _buildTop5Card('Top 5 Money Market', ['Money Market'], dbSortKey),
+      ),
+    ],
+  ),
+),
+                      const SizedBox(height: 8),
 
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24.0),
