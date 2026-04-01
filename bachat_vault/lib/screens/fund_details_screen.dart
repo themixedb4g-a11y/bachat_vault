@@ -94,10 +94,32 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
 
       final responses = await Future.wait([fundFuture, payoutFuture, indexFuture, goldFuture]);
       
-      final fundData = responses[0] as List<dynamic>;
-      final payoutData = responses[1] as List<dynamic>;
-      final indexData = responses[2] as List<dynamic>;
-      final goldData = responses[3] as List<dynamic>;
+      // We wrap these in List.from() so they are mutable (we can remove items from them)
+      List<dynamic> fundData = List.from(responses[0] as List<dynamic>);
+      List<dynamic> payoutData = List.from(responses[1] as List<dynamic>);
+      List<dynamic> indexData = List.from(responses[2] as List<dynamic>);
+      List<dynamic> goldData = List.from(responses[3] as List<dynamic>);
+
+      // --- THE UNIVERSAL "COMMON DENOMINATOR" FIX ---
+      List<DateTime> startDates = [];
+      
+      // Find the absolute earliest date available for every active line
+      // FIX: Both tables use 'validity_date' for dates. No ternary needed here!
+      if (fundData.isNotEmpty) startDates.add(DateTime.parse(fundData.first['validity_date'].toString()));
+      if (_showKse100 && indexData.isNotEmpty) startDates.add(DateTime.parse(indexData.first['validity_date'].toString()));
+      if (_showGold && goldData.isNotEmpty) startDates.add(DateTime.parse(goldData.first['validity_date'].toString()));
+
+      if (startDates.isNotEmpty) {
+        // Find the LATEST of those starting dates (The Common Denominator)
+        DateTime commonStartDate = startDates.reduce((a, b) => a.isAfter(b) ? a : b);
+        
+        // Trim all datasets so they strictly start on or after the Common Denominator
+        fundData.removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
+        indexData.removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
+        goldData.removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
+        payoutData.removeWhere((row) => DateTime.parse(row['payout_date'].toString()).isBefore(commonStartDate));
+      }
+      // -----------------------------------------------
 
       List<FlSpot> fundSpots = [];
       double startNav = 1.0; 
@@ -467,10 +489,10 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                         ),
                         // KSE100 Line
                         if (_showKse100 && _kseSpots.isNotEmpty)
-                          LineChartBarData(spots: _kseSpots, isCurved: true, color: Colors.orangeAccent, barWidth: 1.5, dotData: const FlDotData(show: false), dashArray: [5, 5]),
+                          LineChartBarData(spots: _kseSpots, isCurved: true, color: Colors.orangeAccent, barWidth: 1.5, dotData: const FlDotData(show: false)),
                         // Gold Line
                         if (_showGold && _goldSpots.isNotEmpty)
-                          LineChartBarData(spots: _goldSpots, isCurved: true, color: Colors.yellowAccent, barWidth: 1.5, dotData: const FlDotData(show: false), dashArray: [5, 5]),
+                          LineChartBarData(spots: _goldSpots, isCurved: true, color: Colors.yellowAccent, barWidth: 1.5, dotData: const FlDotData(show: false)),
                       ],
                     ),
                   ),

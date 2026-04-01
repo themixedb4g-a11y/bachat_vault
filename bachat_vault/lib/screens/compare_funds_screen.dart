@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'dart:math' as math;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:bachat_vault/screens/fund_details_screen.dart';
+import 'package:fl_chart/fl_chart.dart'; // <-- Added Chart Import
 
 class CompareFundsScreen extends StatefulWidget {
   final List<Map<String, dynamic>> allFunds;
@@ -30,6 +31,16 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
   bool _isLoadingOverlap = false;
   double _totalOverlapPercentage = 0.0;
   List<Map<String, dynamic>> _overlappingStocks = [];
+
+  // --- CHART ENGINE STATE ---
+  bool _isChartExpanded = false;
+  bool _isLoadingChart = false;
+  Map<String, List<FlSpot>> _chartSpots = {};
+  double _minX = 0;
+  double _maxX = 0;
+  double _minY = 90;
+  double _maxY = 110;
+  final List<Color> _chartColors = [Colors.tealAccent, Colors.orangeAccent, Colors.pinkAccent, Colors.blueAccent];
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
@@ -230,6 +241,123 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     }
   }
 
+  // --- THE MULTI-FUND CHART ENGINE ---
+  Future<void> _loadComparisonChartData() async {
+    final validTickers = _selectedFundTickers.where((t) => t != null).cast<String>().toList();
+    if (validTickers.isEmpty) return;
+    if (!mounted) return;
+    setState(() => _isLoadingChart = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      DateTime startDate = DateTime.now();
+      bool isMax = false;
+      
+      switch (_selectedPeriod) {
+        case '30D': startDate = DateTime.now().subtract(const Duration(days: 30)); break;
+        case '1Y': startDate = DateTime.now().subtract(const Duration(days: 365)); break;
+        case '3Y': startDate = DateTime.now().subtract(const Duration(days: 1095)); break;
+        case '5Y': startDate = DateTime.now().subtract(const Duration(days: 1825)); break;
+        case '10Y': startDate = DateTime.now().subtract(const Duration(days: 3650)); break;
+        case '15Y': startDate = DateTime.now().subtract(const Duration(days: 5475)); break;
+        case 'MAX': startDate = DateTime(2000, 1, 1); isMax = true; break;
+        default: startDate = DateTime.now().subtract(const Duration(days: 365));
+      }
+      final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
+
+      List<List<dynamic>> allFundData = [];
+      List<List<dynamic>> allPayoutData = [];
+
+      // 1. Fetch all data concurrently
+      List<Future> futures = [];
+      for (String ticker in validTickers) {
+        futures.add(supabase.from('daily_nav').select('validity_date, nav').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true));
+        futures.add(supabase.from('payout_history').select('payout_date, payout_amount, ex_nav').eq('ticker', ticker).gte('payout_date', startDateStr));
+      }
+      final responses = await Future.wait(futures);
+
+      for (int i = 0; i < validTickers.length; i++) {
+        allFundData.add(List.from(responses[i * 2] as List<dynamic>));
+        allPayoutData.add(List.from(responses[(i * 2) + 1] as List<dynamic>));
+      }
+
+      // 2. THE COMMON DENOMINATOR FIX (Now applies to all periods)
+      List<DateTime> startDates = [];
+      for (var data in allFundData) {
+        if (data.isNotEmpty) startDates.add(DateTime.parse(data.first['validity_date'].toString()));
+      }
+      if (startDates.isNotEmpty) {
+        DateTime commonStartDate = startDates.reduce((a, b) => a.isAfter(b) ? a : b);
+        for (int i = 0; i < allFundData.length; i++) {
+          allFundData[i].removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
+          allPayoutData[i].removeWhere((row) => DateTime.parse(row['payout_date'].toString()).isBefore(commonStartDate));
+        }
+      }
+
+      // 3. Base-100 Calculation
+      Map<String, List<FlSpot>> newSpots = {};
+      double localMinX = 9999999999999;
+      double localMaxX = 0;
+      double localMinY = 999999;
+      double localMaxY = -999999;
+
+      for (int i = 0; i < validTickers.length; i++) {
+        String ticker = validTickers[i];
+        List<dynamic> fundData = allFundData[i];
+        List<dynamic> payoutData = allPayoutData[i];
+        List<FlSpot> spots = [];
+        
+        if (fundData.isEmpty) continue;
+
+        double startNav = 1.0;
+        for (var row in fundData) {
+          double val = double.tryParse(row['nav'].toString()) ?? 0.0;
+          if (val > 0) { startNav = val; break; }
+        }
+
+        double currentUnits = 100.0 / startNav;
+
+        for (var row in fundData) {
+          String dateStr = row['validity_date'].toString();
+          DateTime date = DateTime.parse(dateStr);
+          double nav = double.tryParse(row['nav'].toString()) ?? 0.0;
+          if (nav <= 0) continue;
+
+          var dailyPayouts = payoutData.where((p) => p['payout_date'].toString().startsWith(dateStr));
+          for (var p in dailyPayouts) {
+            double pAmt = double.tryParse(p['payout_amount'].toString()) ?? 0.0;
+            double exNav = double.tryParse(p['ex_nav'].toString()) ?? 0.0;
+            if (exNav > 0) currentUnits = currentUnits * (1 + (pAmt / exNav));
+          }
+
+          double base100Value = currentUnits * nav;
+          double xValue = date.millisecondsSinceEpoch.toDouble();
+          
+          spots.add(FlSpot(xValue, base100Value));
+          
+          if (xValue < localMinX) localMinX = xValue;
+          if (xValue > localMaxX) localMaxX = xValue;
+          if (base100Value < localMinY) localMinY = base100Value;
+          if (base100Value > localMaxY) localMaxY = base100Value;
+        }
+        newSpots[ticker] = spots;
+      }
+
+      if (mounted) {
+        setState(() {
+          _chartSpots = newSpots;
+          _minX = localMinX;
+          _maxX = localMaxX;
+          _minY = localMinY * 0.95;
+          _maxY = localMaxY * 1.05;
+          _isLoadingChart = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingChart = false);
+    }
+  }
+
   // --- OVERLAP UI WIDGET (TEAL THEME) ---
   Widget _buildOverlapAnalyzer() {
     if (!_showOverlapButton) return const SizedBox.shrink();
@@ -342,6 +470,113 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     );
   }
 
+  // --- THE NEW COMPARISON CHART WIDGET ---
+  Widget _buildComparisonChart() {
+    final validTickers = _selectedFundTickers.where((t) => t != null).cast<String>().toList();
+    if (validTickers.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.02), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.tealAccent.withOpacity(0.3))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('✨ Growth Comparison', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                onPressed: () => setState(() => _isChartExpanded = false),
+              )
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Legend
+          Wrap(
+            spacing: 12, runSpacing: 8,
+            children: validTickers.asMap().entries.map((entry) {
+              int idx = entry.key;
+              String ticker = entry.value;
+              final fundData = widget.allFunds.firstWhere((f) => f['ticker'] == ticker, orElse: () => {});
+              String name = _cleanFundName(fundData['fund_name']?.toString() ?? ticker);
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 10, height: 10, decoration: BoxDecoration(color: _chartColors[idx % _chartColors.length], shape: BoxShape.circle)),
+                  const SizedBox(width: 6),
+                  Text(name, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                ],
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 24),
+
+          SizedBox(
+            height: 250,
+            child: _isLoadingChart 
+              ? const Center(child: CircularProgressIndicator(color: Colors.tealAccent))
+              : _chartSpots.isEmpty 
+                ? const Center(child: Text('No data available for this period.', style: TextStyle(color: Colors.white54)))
+                : LineChart(
+                    LineChartData(
+                      minX: _minX, maxX: _maxX, minY: _minY, maxY: _maxY,
+                      gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (value) => FlLine(color: Colors.white.withOpacity(0.05), strokeWidth: 1)),
+                      titlesData: FlTitlesData(
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (value, meta) => Text(value.toInt().toString(), style: const TextStyle(color: Colors.white38, fontSize: 10))),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true, reservedSize: 30, 
+                            interval: (_maxX - _minX) > 0 ? (_maxX - _minX) / 3 : 86400000.0 * 30,
+                            getTitlesWidget: (value, meta) {
+                              DateTime date = DateTime.fromMillisecondsSinceEpoch(value.toInt());
+                              return Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(DateFormat('MMM yy').format(date), style: const TextStyle(color: Colors.white38, fontSize: 10)));
+                            },
+                          ),
+                        ),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      lineTouchData: LineTouchData(
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipItems: (touchedSpots) {
+                            return touchedSpots.map((spot) {
+                              DateTime date = DateTime.fromMillisecondsSinceEpoch(spot.x.toInt());
+                              String ticker = validTickers[spot.barIndex];
+                              final fundData = widget.allFunds.firstWhere((f) => f['ticker'] == ticker, orElse: () => {});
+                              String name = _cleanFundName(fundData['fund_name']?.toString() ?? ticker);
+                              
+                              return LineTooltipItem('${DateFormat('dd MMM yyyy').format(date)}\n$name\n${spot.y.toStringAsFixed(1)}', TextStyle(color: _chartColors[spot.barIndex % _chartColors.length], fontSize: 10, fontWeight: FontWeight.bold));
+                            }).toList();
+                          },
+                        ),
+                      ),
+                      lineBarsData: validTickers.asMap().entries.map((entry) {
+                        int idx = entry.key;
+                        String ticker = entry.value;
+                        return LineChartBarData(
+                          spots: _chartSpots[ticker] ?? [],
+                          isCurved: true,
+                          color: _chartColors[idx % _chartColors.length],
+                          barWidth: 2,
+                          isStrokeCapRound: true,
+                          dotData: const FlDotData(show: false), // SOLID LINES
+                        );
+                      }).toList(),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Map<String, dynamic>> _getFundsInCategory() {
     if (_selectedCategory == null) return [];
     return widget.allFunds.where((f) => f['category']?.toString().trim() == _selectedCategory).toList();
@@ -359,7 +594,10 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
   Widget _buildPeriodFilterBtn(String label) {
     final isSelected = _selectedPeriod == label;
     return GestureDetector(
-      onTap: () => setState(() => _selectedPeriod = label),
+      onTap: () {
+        setState(() => _selectedPeriod = label);
+        if (_isChartExpanded) _loadComparisonChartData(); // Reload chart on filter change
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(color: isSelected ? Colors.tealAccent.withOpacity(0.2) : Colors.transparent, borderRadius: BorderRadius.circular(8), border: Border.all(color: isSelected ? Colors.tealAccent : Colors.white.withOpacity(0.2), width: 1)),
@@ -587,13 +825,37 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                       alignment: WrapAlignment.center, 
                       spacing: 8, 
                       runSpacing: 12, 
-                      children: ['30D', '1Y', '3Y', '5Y', '10Y', '15Y'].map((p) => _buildPeriodFilterBtn(p)).toList(),
+                      children: ['30D', '1Y', '3Y', '5Y', '10Y', '15Y', 'MAX'].map((p) => _buildPeriodFilterBtn(p)).toList(),
                     ),
                   ),
                   const SizedBox(height: 24),
 
-                  // --- THE NEW OVERLAP ANALYZER WIDGET ---
+                  // --- THE OVERLAP ANALYZER WIDGET ---
                   _buildOverlapAnalyzer(),
+                  const SizedBox(height: 8),
+
+                  // --- THE NEW CHART BUTTON ---
+                  if (!_isChartExpanded && _selectedFundTickers.where((t) => t != null).isNotEmpty)
+                    Center(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.show_chart, color: Colors.tealAccent, size: 25),
+                        label: const Text('✨ Compare Performance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          side: BorderSide(color: Colors.tealAccent.withOpacity(0.5)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          backgroundColor: Colors.tealAccent.withOpacity(0.05)
+                        ),
+                        onPressed: () {
+                          setState(() => _isChartExpanded = true);
+                          _loadComparisonChartData();
+                        },
+                      ),
+                    ),
+
+                  if (_isChartExpanded)
+                    _buildComparisonChart(),
+
                   const SizedBox(height: 16),
 
                   ..._selectedFundTickers.map((ticker) {
