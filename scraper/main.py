@@ -43,7 +43,7 @@ FUND_LOGIC_MAP = {
 FUND_CATEGORY_MAP = {row["ticker"]: row.get("category", "") for row in master_res.data}
 
 
-# --- THE GUARDRAILS ---
+# --- THE GUARDRAILS (100% UNTOUCHED) ---
 def is_valid_date(date_str, ticker):
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -81,34 +81,53 @@ def is_valid_date(date_str, ticker):
         return False
 
 
-def filter_manual_entries(batch, table_name):
+# --- THE FINAL BOSS HIERARCHY (Replaced old manual filter) ---
+def filter_protected_entries(batch, table_name):
     if not batch:
         return []
     try:
         dates = list(set([item["validity_date"] for item in batch]))
+
+        # 1. Ask DB what it currently holds for these dates
         res = (
             supabase.table(table_name)
-            .select("ticker, validity_date")
+            .select("ticker, validity_date, source")
             .in_("validity_date", dates)
-            .ilike("source", "%Manual%")
             .execute()
         )
-        manual_set = {(r["ticker"], r["validity_date"]) for r in res.data}
-        filtered_batch = [
-            item
-            for item in batch
-            if (item["ticker"], item["validity_date"]) not in manual_set
-        ]
+
+        # 2. Create a map of existing sources: {(ticker, date): 'source'}
+        # Using "or ''" handles cases where the DB column is completely NULL
+        existing_map = {
+            (r["ticker"], r["validity_date"]): (r.get("source") or "") for r in res.data
+        }
+
+        filtered_batch = []
+        for item in batch:
+            key = (item["ticker"], item["validity_date"])
+            existing_source = existing_map.get(key, "")
+            incoming_source = item.get("source") or ""
+
+            # RULE 1: Never overwrite manual updates
+            if "Manual" in existing_source:
+                continue
+
+            # RULE 2: MUFAP cannot overwrite AMC_Website
+            if incoming_source == "MUFAP" and "AMC_Website" in existing_source:
+                continue
+
+            # Passed all hierarchical guardrails!
+            filtered_batch.append(item)
 
         skipped = len(batch) - len(filtered_batch)
         if skipped > 0:
             print(
-                f"   🛡️ Protected {skipped} manually updated records from being overwritten."
+                f"   🛡️ Hierarchy Guardrail: Protected {skipped} higher-priority records."
             )
 
         return filtered_batch
     except Exception as e:
-        print(f"   ⚠️ Could not check manual entries, proceeding carefully: {e}")
+        print(f"   ⚠️ Could not check protected entries, proceeding carefully: {e}")
         return batch
 
 
@@ -161,7 +180,7 @@ def sync_psx_indices():
                 )
 
         if batch:
-            safe_batch = filter_manual_entries(batch, "benchmarks")
+            safe_batch = filter_protected_entries(batch, "benchmarks")
             if safe_batch:
                 supabase.table("benchmarks").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
@@ -198,7 +217,7 @@ def sync_gold_rates():
                     "source": "Gold.pk",
                 }
             ]
-            safe_batch = filter_manual_entries(gold_data, "benchmarks")
+            safe_batch = filter_protected_entries(gold_data, "benchmarks")
 
             if safe_batch:
                 supabase.table("benchmarks").upsert(
@@ -248,7 +267,7 @@ def sync_psx_etfs():
         results = list(filter(None, executor.map(fetch_etf, psx_etf_tickers)))
 
     if results:
-        safe_batch = filter_manual_entries(results, "daily_nav")
+        safe_batch = filter_protected_entries(results, "daily_nav")
         if safe_batch:
             supabase.table("daily_nav").upsert(
                 safe_batch, on_conflict="ticker,validity_date"
@@ -318,7 +337,7 @@ def sync_mufap_master():
                     except:
                         continue
         if batch:
-            safe_batch = filter_manual_entries(batch, "daily_nav")
+            safe_batch = filter_protected_entries(batch, "daily_nav")
             if safe_batch:
                 supabase.table("daily_nav").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
@@ -432,7 +451,7 @@ def sync_ubl_amc_refined():
                 (item["ticker"], item["validity_date"]): item for item in batch
             }
             final_batch = list(unique_batch.values())
-            safe_batch = filter_manual_entries(final_batch, "daily_nav")
+            safe_batch = filter_protected_entries(final_batch, "daily_nav")
             if safe_batch:
                 supabase.table("daily_nav").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
@@ -497,7 +516,9 @@ def sync_abl_amc():
             unique_batch = {
                 (item["ticker"], item["validity_date"]): item for item in batch
             }
-            safe_batch = filter_manual_entries(list(unique_batch.values()), "daily_nav")
+            safe_batch = filter_protected_entries(
+                list(unique_batch.values()), "daily_nav"
+            )
             if safe_batch:
                 supabase.table("daily_nav").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
@@ -565,7 +586,9 @@ def sync_nbp_amc():
             unique_batch = {
                 (item["ticker"], item["validity_date"]): item for item in batch
             }
-            safe_batch = filter_manual_entries(list(unique_batch.values()), "daily_nav")
+            safe_batch = filter_protected_entries(
+                list(unique_batch.values()), "daily_nav"
+            )
             if safe_batch:
                 supabase.table("daily_nav").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
@@ -648,7 +671,9 @@ def sync_hbl_amc():
             unique_batch = {
                 (item["ticker"], item["validity_date"]): item for item in batch
             }
-            safe_batch = filter_manual_entries(list(unique_batch.values()), "daily_nav")
+            safe_batch = filter_protected_entries(
+                list(unique_batch.values()), "daily_nav"
+            )
             if safe_batch:
                 supabase.table("daily_nav").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
@@ -833,7 +858,7 @@ def sync_crypto_rates():
                     )
 
         if batch:
-            safe_batch = filter_manual_entries(batch, "benchmarks")
+            safe_batch = filter_protected_entries(batch, "benchmarks")
             if safe_batch:
                 supabase.table("benchmarks").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
@@ -850,7 +875,6 @@ def sync_crypto_rates():
 def run_scraper(request):
     """HTTP Cloud Function to trigger the scraping tasks."""
 
-    # Check if a specific target was passed in the URL (e.g., ?target=mufap)
     request_args = request.args
     target = request_args.get("target", "all").lower()
 
@@ -897,12 +921,8 @@ def run_scraper(request):
     # WAKE UP THE BRAIN!
     print("🧠 Scraper finished. Triggering Brain Engine...")
     try:
-        # Put your exact bachat-brain URL here!
         requests.get("https://bachat-brain-395873114094.us-central1.run.app", timeout=1)
     except requests.exceptions.ReadTimeout:
-        pass  # The 1-second timeout prevents the scraper from waiting for the math to finish.
+        pass
 
     return completion_msg, 200
-
-
-# Let's go Google Cloud
