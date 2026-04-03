@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from lxml import html
 import re
 from supabase import create_client
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import urllib3
 import sys
@@ -43,7 +43,7 @@ FUND_LOGIC_MAP = {
 FUND_CATEGORY_MAP = {row["ticker"]: row.get("category", "") for row in master_res.data}
 
 
-# --- THE GUARDRAILS (100% UNTOUCHED) ---
+# --- THE GUARDRAILS (Updated with new Gold tickers) ---
 def is_valid_date(date_str, ticker):
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -68,6 +68,9 @@ def is_valid_date(date_str, ticker):
                 "SOL-USD",
                 "CPI_PK",
                 "GOLD_24K",
+                "GOLD_24K_LOCAL",
+                "GOLD_XAU",
+                "USDPKR",
             ]
 
             if dt.weekday() >= 5 and ticker not in weekend_exceptions:
@@ -81,14 +84,13 @@ def is_valid_date(date_str, ticker):
         return False
 
 
-# --- THE FINAL BOSS HIERARCHY (Replaced old manual filter) ---
+# --- THE FINAL BOSS HIERARCHY ---
 def filter_protected_entries(batch, table_name):
     if not batch:
         return []
     try:
         dates = list(set([item["validity_date"] for item in batch]))
 
-        # 1. Ask DB what it currently holds for these dates
         res = (
             supabase.table(table_name)
             .select("ticker, validity_date, source")
@@ -96,8 +98,6 @@ def filter_protected_entries(batch, table_name):
             .execute()
         )
 
-        # 2. Create a map of existing sources: {(ticker, date): 'source'}
-        # Using "or ''" handles cases where the DB column is completely NULL
         existing_map = {
             (r["ticker"], r["validity_date"]): (r.get("source") or "") for r in res.data
         }
@@ -108,15 +108,12 @@ def filter_protected_entries(batch, table_name):
             existing_source = existing_map.get(key, "")
             incoming_source = item.get("source") or ""
 
-            # RULE 1: Never overwrite manual updates
             if "Manual" in existing_source:
                 continue
 
-            # RULE 2: MUFAP cannot overwrite AMC_Website
             if incoming_source == "MUFAP" and "AMC_Website" in existing_source:
                 continue
 
-            # Passed all hierarchical guardrails!
             filtered_batch.append(item)
 
         skipped = len(batch) - len(filtered_batch)
@@ -163,9 +160,6 @@ def sync_psx_indices():
                             "%Y-%m-%d"
                         )
                 else:
-                    print(
-                        f"   ⚠️ Warning: Could not parse date for {ticker}. Using fallback."
-                    )
                     web_date = datetime.now(pytz.timezone("Asia/Karachi")).strftime(
                         "%Y-%m-%d"
                     )
@@ -190,9 +184,9 @@ def sync_psx_indices():
         print(f"   ❌ PSX Error: {e}")
 
 
-# --- TASK B: GOLD ---
+# --- TASK B1: LOCAL GOLD (Portfolio Tracker) ---
 def sync_gold_rates():
-    print("💰 Syncing Gold...")
+    print("💰 Syncing Local Gold (Portfolio)...")
     try:
         soup = BeautifulSoup(
             session.get("https://gold.pk/gold-rates-pakistan.php", timeout=15).text,
@@ -207,13 +201,21 @@ def sync_gold_rates():
             )
             if val > 1000000:
                 val = float(str(int(val))[:6])
-            today_pk = datetime.now(pytz.timezone("Asia/Karachi")).strftime("%Y-%m-%d")
+
+            # --- The 7 AM Time-Sync Fix ---
+            now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
+            if now_pk.hour < 15:
+                # Before 3 PM, the market hasn't opened. Log this as yesterday's price.
+                assigned_date = (now_pk - timedelta(days=1)).strftime("%Y-%m-%d")
+            else:
+                # After 3 PM, the market has updated. Log as today's price.
+                assigned_date = now_pk.strftime("%Y-%m-%d")
 
             gold_data = [
                 {
-                    "ticker": "GOLD_24K",
+                    "ticker": "GOLD_24K_LOCAL",
                     "value": val,
-                    "validity_date": today_pk,
+                    "validity_date": assigned_date,
                     "source": "Gold.pk",
                 }
             ]
@@ -223,9 +225,80 @@ def sync_gold_rates():
                 supabase.table("benchmarks").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
                 ).execute()
-                print(f"   ✅ Gold updated.")
+                print(f"   ✅ Local Gold updated.")
     except Exception as e:
-        print(f"   ❌ Gold Error: {e}")
+        print(f"   ❌ Local Gold Error: {e}")
+
+
+# --- TASK B2: INTERNATIONAL GOLD (App Charts Benchmark) ---
+def sync_international_gold():
+    print("🌍 Syncing International Gold (XAU & PKR Benchmark)...")
+    try:
+        # Fetch last 5 days to ensure we sync Friday's close over the weekend
+        xau_data = yf.Ticker("GC=F").history(period="5d")
+        pkr_data = yf.Ticker("PKR=X").history(period="5d")
+
+        batch = []
+
+        # Convert both DataFrames into simple Date -> Value dictionaries
+        xau_dict = {
+            index.strftime("%Y-%m-%d"): float(row["Close"])
+            for index, row in xau_data.iterrows()
+        }
+        pkr_dict = {
+            index.strftime("%Y-%m-%d"): float(row["Close"])
+            for index, row in pkr_data.iterrows()
+        }
+
+        # Find matching dates where both markets were open
+        common_dates = set(xau_dict.keys()).intersection(set(pkr_dict.keys()))
+
+        for date_str in common_dates:
+            xau_val = xau_dict[date_str]
+            pkr_val = pkr_dict[date_str]
+
+            # The calculation: Convert 1 Troy Oz in USD to 1 Tola in PKR
+            gold_24k_benchmark_val = xau_val * pkr_val * 11.6638 / 31.1035
+
+            # 1. Store Raw XAU (Oz/USD)
+            batch.append(
+                {
+                    "ticker": "GOLD_XAU",
+                    "value": xau_val,
+                    "validity_date": date_str,
+                    "source": "Yahoo Finance",
+                }
+            )
+            # 2. Store Raw USDPKR
+            batch.append(
+                {
+                    "ticker": "USDPKR",
+                    "value": pkr_val,
+                    "validity_date": date_str,
+                    "source": "Yahoo Finance",
+                }
+            )
+            # 3. Store the Calculated Benchmark (App reads this directly)
+            batch.append(
+                {
+                    "ticker": "GOLD_24K",
+                    "value": gold_24k_benchmark_val,
+                    "validity_date": date_str,
+                    "source": "Yahoo Finance",
+                }
+            )
+
+        if batch:
+            safe_batch = filter_protected_entries(batch, "benchmarks")
+            if safe_batch:
+                supabase.table("benchmarks").upsert(
+                    safe_batch, on_conflict="ticker,validity_date"
+                ).execute()
+                print(
+                    f"   ✅ {len(safe_batch)} International Gold & FX records synced."
+                )
+    except Exception as e:
+        print(f"   ❌ International Gold Error: {e}")
 
 
 # --- TASK C: PSX ETFs ---
@@ -892,16 +965,19 @@ def run_scraper(request):
         sync_hbl_amc()
     elif target == "gold_ter":
         sync_gold_rates()
+        sync_international_gold()  # ADDED HERE
         sync_mufap_payouts()
         sync_mufap_ter()
     elif target == "market":
         sync_psx_indices()
         sync_psx_etfs()
         sync_gold_rates()
+        sync_international_gold()  # ADDED HERE
         sync_crypto_rates()
     else:  # Default 'all'
         sync_psx_indices()
         sync_gold_rates()
+        sync_international_gold()  # ADDED HERE
         sync_psx_etfs()
         sync_mufap_master()
         sync_ubl_amc_refined()
