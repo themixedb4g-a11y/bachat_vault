@@ -1062,12 +1062,28 @@ def run_scraper(request):
     print(completion_msg)
 
     import requests
+    import google.auth.transport.requests
+    import google.oauth2.id_token
 
-    # WAKE UP THE BRAIN!
-    print("🧠 Scraper finished. Triggering Brain Engine...")
+    # WAKE UP THE BRAIN SECURELY!
+    print("🧠 Scraper finished. Generating IAM Token and Triggering Brain Engine...")
+    target_audience = "https://bachat-brain-395873114094.us-central1.run.app"
+
     try:
-        requests.get("https://bachat-brain-395873114094.us-central1.run.app", timeout=1)
+        # 1. Generate a secure Google Cloud Identity Token
+        auth_req = google.auth.transport.requests.Request()
+        id_token = google.oauth2.id_token.fetch_id_token(auth_req, target_audience)
+
+        # 2. Attach the token to the Authorization header
+        headers = {"Authorization": f"Bearer {id_token}"}
+
+        # 3. Fire the secure request
+        requests.get(target_audience, headers=headers, timeout=1)
+
     except requests.exceptions.ReadTimeout:
+        # The Brain takes a while to run, so a timeout is normal and expected.
         pass
+    except Exception as e:
+        print(f"   ⚠️ Could not trigger Brain securely: {e}")
 
     return completion_msg, 200
