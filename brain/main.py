@@ -78,11 +78,12 @@ def run_optimized_brain():
     start_time = datetime.now()
 
     print("📦 Downloading historical data safely...")
+    # --- CHANGED: Added 'ldcp' to the fetch queries ---
     nav_data = fetch_all_data(
-        "daily_nav", "ticker, validity_date, nav", date_col="validity_date"
+        "daily_nav", "ticker, validity_date, nav, ldcp", date_col="validity_date"
     )
     bench_data = fetch_all_data(
-        "benchmarks", "ticker, validity_date, value", date_col="validity_date"
+        "benchmarks", "ticker, validity_date, value, ldcp", date_col="validity_date"
     )
     payout_data = fetch_all_data(
         "payout_history",
@@ -212,30 +213,47 @@ def run_optimized_brain():
                 stats_update[col] = round(float(multiplier), 8)
 
         for col, days in PERIODS.items():
-            target_date = anchor_date - timedelta(days=days)
+            # --- CHANGED: THE 1D RETURN LDCP FAST-TRACK ---
+            # If we are calculating 1D return, AND this row has an official LDCP, use it instantly!
+            if (
+                col == "return_1d"
+                and "ldcp" in anchor_row
+                and pd.notna(anchor_row["ldcp"])
+                and anchor_row["ldcp"] > 0
+            ):
+                past_nav = float(anchor_row["ldcp"])
+                past_date = anchor_date - timedelta(
+                    days=1
+                )  # Proxy date for payout filtering
+            else:
+                # --- THE OLD WAY: Time-travel lookup (Used for Mutual Funds and 30D, 1Y, 3Y, etc.) ---
+                target_date = anchor_date - timedelta(days=days)
 
-            if inception_date and target_date < inception_date:
-                stats_update[col] = None
-                continue
+                if inception_date and target_date < inception_date:
+                    stats_update[col] = None
+                    continue
 
-            past_prices = ticker_prices[ticker_prices["validity_date"] <= target_date]
+                past_prices = ticker_prices[
+                    ticker_prices["validity_date"] <= target_date
+                ]
 
-            if past_prices.empty:
-                stats_update[col] = None
-                continue
+                if past_prices.empty:
+                    stats_update[col] = None
+                    continue
 
-            valid_past_row = None
-            for _, row in past_prices.head(7).iterrows():
-                if pd.notna(row["nav"]) and row["nav"] > 0:
-                    valid_past_row = row
-                    break
+                valid_past_row = None
+                for _, row in past_prices.head(7).iterrows():
+                    if pd.notna(row["nav"]) and row["nav"] > 0:
+                        valid_past_row = row
+                        break
 
-            if valid_past_row is None:
-                stats_update[col] = None
-                continue
+                if valid_past_row is None:
+                    stats_update[col] = None
+                    continue
 
-            past_nav = valid_past_row["nav"]
-            past_date = valid_past_row["validity_date"]
+                past_nav = valid_past_row["nav"]
+                past_date = valid_past_row["validity_date"]
+            # ------------------------------------------------
 
             units = 1.0
             if not ticker_payouts.empty:

@@ -43,7 +43,7 @@ FUND_LOGIC_MAP = {
 FUND_CATEGORY_MAP = {row["ticker"]: row.get("category", "") for row in master_res.data}
 
 
-# --- THE GUARDRAILS (Updated with new Gold tickers) ---
+# --- THE GUARDRAILS ---
 def is_valid_date(date_str, ticker):
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -128,12 +128,15 @@ def filter_protected_entries(batch, table_name):
         return batch
 
 
-# --- TASK A: PSX INDICES ---
+# --- TASK A: PSX INDICES (UPDATED FOR LDCP) ---
 def sync_psx_indices():
     print("📈 Syncing PSX Indices...")
     try:
         response = session.get("https://dps.psx.com.pk", timeout=15)
         tree = html.fromstring(response.content)
+
+        # Grab all stats blocks for LDCP mapping
+        stats_elements = tree.xpath("//div[@class='stats_value']")
 
         batch = []
         for ticker, xp_idx in [("KSE100", 1), ("KMI30", 5)]:
@@ -146,6 +149,23 @@ def sync_psx_indices():
                 val = float(
                     val_result[0].text_content().strip().replace(",", "").split(" ")[0]
                 )
+
+                # --- LDCP Extraction Logic ---
+                ldcp_val = None
+                try:
+                    if ticker == "KSE100" and len(stats_elements) > 3:
+                        ldcp_text = (
+                            stats_elements[3].text_content().strip().replace(",", "")
+                        )
+                        ldcp_val = float(re.search(r"[\d\.]+", ldcp_text).group())
+                    elif ticker == "KMI30" and len(stats_elements) > 27:
+                        ldcp_text = (
+                            stats_elements[27].text_content().strip().replace(",", "")
+                        )
+                        ldcp_val = float(re.search(r"[\d\.]+", ldcp_text).group())
+                except Exception as e:
+                    print(f"   ⚠️ Could not parse LDCP for {ticker}: {e}")
+
                 raw_date_text = date_result[0].text_content().strip()
                 date_match = re.search(r"([A-Za-z]+\s\d{1,2},\s\d{4})", raw_date_text)
 
@@ -168,6 +188,7 @@ def sync_psx_indices():
                     {
                         "ticker": ticker,
                         "value": val,
+                        "ldcp": ldcp_val,  # NEW
                         "validity_date": web_date,
                         "source": "PSX",
                     }
@@ -179,7 +200,7 @@ def sync_psx_indices():
                 supabase.table("benchmarks").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
                 ).execute()
-                print(f"   ✅ PSX Indices updated.")
+                print(f"   ✅ PSX Indices updated (including LDCP).")
     except Exception as e:
         print(f"   ❌ PSX Error: {e}")
 
@@ -202,13 +223,10 @@ def sync_gold_rates():
             if val > 1000000:
                 val = float(str(int(val))[:6])
 
-            # --- The 7 AM Time-Sync Fix ---
             now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
             if now_pk.hour < 15:
-                # Before 3 PM, the market hasn't opened. Log this as yesterday's price.
                 assigned_date = (now_pk - timedelta(days=1)).strftime("%Y-%m-%d")
             else:
-                # After 3 PM, the market has updated. Log as today's price.
                 assigned_date = now_pk.strftime("%Y-%m-%d")
 
             gold_data = [
@@ -230,17 +248,16 @@ def sync_gold_rates():
         print(f"   ❌ Local Gold Error: {e}")
 
 
-# --- TASK B2: INTERNATIONAL GOLD (App Charts Benchmark) ---
+# --- TASK B2: INTERNATIONAL GOLD (UPDATED FOR LDCP) ---
 def sync_international_gold():
     print("🌍 Syncing International Gold (XAU & PKR Benchmark)...")
     try:
-        # Fetch last 5 days to ensure we sync Friday's close over the weekend
-        xau_data = yf.Ticker("GC=F").history(period="5d")
-        pkr_data = yf.Ticker("PKR=X").history(period="5d")
+        # Fetch last 6 days to ensure the 5th day has an accurate "previous close" (LDCP)
+        xau_data = yf.Ticker("GC=F").history(period="6d")
+        pkr_data = yf.Ticker("PKR=X").history(period="6d")
 
         batch = []
 
-        # Convert both DataFrames into simple Date -> Value dictionaries
         xau_dict = {
             index.strftime("%Y-%m-%d"): float(row["Close"])
             for index, row in xau_data.iterrows()
@@ -250,39 +267,49 @@ def sync_international_gold():
             for index, row in pkr_data.iterrows()
         }
 
-        # Find matching dates where both markets were open
-        common_dates = set(xau_dict.keys()).intersection(set(pkr_dict.keys()))
+        # Find matching dates and sort them sequentially
+        common_dates = sorted(
+            list(set(xau_dict.keys()).intersection(set(pkr_dict.keys())))
+        )
 
-        for date_str in common_dates:
+        # Start from index 1 so we can look back to index 0 for the exact LDCP
+        for i in range(1, len(common_dates)):
+            date_str = common_dates[i]
+            prev_date = common_dates[i - 1]
+
+            # Current Values
             xau_val = xau_dict[date_str]
             pkr_val = pkr_dict[date_str]
-
-            # The calculation: Convert 1 Troy Oz in USD to 1 Tola in PKR
             gold_24k_benchmark_val = xau_val * pkr_val * 11.6638 / 31.1035
 
-            # 1. Store Raw XAU (Oz/USD)
+            # Previous Close (LDCP) Values
+            xau_ldcp = xau_dict[prev_date]
+            pkr_ldcp = pkr_dict[prev_date]
+            gold_24k_ldcp = xau_ldcp * pkr_ldcp * 11.6638 / 31.1035
+
             batch.append(
                 {
                     "ticker": "GOLD_XAU",
                     "value": xau_val,
+                    "ldcp": xau_ldcp,
                     "validity_date": date_str,
                     "source": "Yahoo Finance",
                 }
             )
-            # 2. Store Raw USDPKR
             batch.append(
                 {
                     "ticker": "USDPKR",
                     "value": pkr_val,
+                    "ldcp": pkr_ldcp,
                     "validity_date": date_str,
                     "source": "Yahoo Finance",
                 }
             )
-            # 3. Store the Calculated Benchmark (App reads this directly)
             batch.append(
                 {
                     "ticker": "GOLD_24K",
                     "value": gold_24k_benchmark_val,
+                    "ldcp": gold_24k_ldcp,
                     "validity_date": date_str,
                     "source": "Yahoo Finance",
                 }
@@ -295,21 +322,34 @@ def sync_international_gold():
                     safe_batch, on_conflict="ticker,validity_date"
                 ).execute()
                 print(
-                    f"   ✅ {len(safe_batch)} International Gold & FX records synced."
+                    f"   ✅ {len(safe_batch)} International Gold & FX records synced (with LDCP)."
                 )
     except Exception as e:
         print(f"   ❌ International Gold Error: {e}")
 
 
-# --- TASK C: PSX ETFs ---
+# --- TASK C: PSX ETFs (UPDATED FOR DUAL-WRITE & LDCP) ---
 def fetch_etf(ticker):
     try:
         soup = BeautifulSoup(
             session.get(f"https://dps.psx.com.pk/etf/{ticker}", timeout=10).text, "lxml"
         )
+
+        # 1. Grab Live Price
         price = float(
             re.findall(r"\d+\.\d+", soup.find("div", class_="quote__price").text)[0]
         )
+
+        # 2. Grab LDCP (from the first stats_value element, mirroring index 1 in Google Sheets)
+        ldcp = None
+        stats_divs = soup.find_all("div", class_="stats_value")
+        if stats_divs:
+            ldcp_text = stats_divs[0].text.replace(",", "").strip()
+            ldcp_match = re.search(r"[\d\.]+", ldcp_text)
+            if ldcp_match:
+                ldcp = float(ldcp_match.group())
+
+        # 3. Grab Date
         date_match = re.search(
             r"[A-Z][a-z]{2}\s\d{1,2},\s\d{4}",
             soup.find("div", class_="quote__date").text,
@@ -318,13 +358,27 @@ def fetch_etf(ticker):
 
         if is_valid_date(web_date, ticker):
             return {
-                "ticker": ticker,
-                "nav": price,
-                "validity_date": web_date,
-                "source": "PSX",
+                # Payload for daily_nav (Historical Charts)
+                "daily_nav": {
+                    "ticker": ticker,
+                    "nav": price,
+                    "ldcp": ldcp,
+                    "validity_date": web_date,
+                    "source": "PSX",
+                },
+                # Payload for live_stock_prices (Portfolio Tracker)
+                "live_stock": {
+                    "ticker": ticker,
+                    "current_price": price,
+                    "ldcp": ldcp,
+                    "last_updated": datetime.now(
+                        pytz.timezone("Asia/Karachi")
+                    ).isoformat(),
+                },
             }
         return None
-    except:
+    except Exception as e:
+        # print(f"Error fetching ETF {ticker}: {e}") # Optional debugging
         return None
 
 
@@ -333,19 +387,34 @@ def sync_psx_etfs():
     psx_etf_tickers = []
     for ticker, category in FUND_CATEGORY_MAP.items():
         if "Exchange Traded Fund" in str(category):
-            if FUND_LOGIC_MAP.get(ticker) != "Annualized":
+            # Exclude HBLTETF (MUFAP specific)
+            if FUND_LOGIC_MAP.get(ticker) != "Annualized" and ticker != "HBLTETF":
                 psx_etf_tickers.append(ticker)
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         results = list(filter(None, executor.map(fetch_etf, psx_etf_tickers)))
 
     if results:
-        safe_batch = filter_protected_entries(results, "daily_nav")
+        # Separate the dual-payloads
+        daily_nav_batch = [res["daily_nav"] for res in results]
+        live_stock_batch = [res["live_stock"] for res in results]
+
+        # 1. Write to daily_nav
+        safe_batch = filter_protected_entries(daily_nav_batch, "daily_nav")
         if safe_batch:
             supabase.table("daily_nav").upsert(
                 safe_batch, on_conflict="ticker,validity_date"
             ).execute()
-            print(f"   ✅ {len(safe_batch)} ETFs updated from PSX.")
+            print(f"   ✅ {len(safe_batch)} ETFs historically updated (daily_nav).")
+
+        # 2. Dual-Write to live_stock_prices
+        if live_stock_batch:
+            supabase.table("live_stock_prices").upsert(
+                live_stock_batch, on_conflict="ticker"
+            ).execute()
+            print(
+                f"   ✅ {len(live_stock_batch)} ETFs live snapshot updated (live_stock_prices)."
+            )
 
 
 # --- TASK D: TARGETED MUFAP ---
@@ -965,19 +1034,19 @@ def run_scraper(request):
         sync_hbl_amc()
     elif target == "gold_ter":
         sync_gold_rates()
-        sync_international_gold()  # ADDED HERE
+        sync_international_gold()
         sync_mufap_payouts()
         sync_mufap_ter()
     elif target == "market":
         sync_psx_indices()
         sync_psx_etfs()
         sync_gold_rates()
-        sync_international_gold()  # ADDED HERE
+        sync_international_gold()
         sync_crypto_rates()
     else:  # Default 'all'
         sync_psx_indices()
         sync_gold_rates()
-        sync_international_gold()  # ADDED HERE
+        sync_international_gold()
         sync_psx_etfs()
         sync_mufap_master()
         sync_ubl_amc_refined()

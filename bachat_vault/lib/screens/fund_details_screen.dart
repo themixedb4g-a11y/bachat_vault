@@ -67,7 +67,9 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       final String ticker = widget.fund['ticker'];
       final bool isShariah = (widget.fund['is_shariah'] == 1 || widget.fund['is_shariah'] == '1' || widget.fund['is_shariah'] == true);
       final String indexTicker = isShariah ? 'KMI30' : 'KSE100';
-      final bool isBenchmark = ['KSE100', 'KMI30', 'GOLD_24K', 'CPI_PK'].contains(ticker);
+      
+      // FIX 1: Added USDPKR to the benchmark array so it fetches from the benchmarks table
+      final bool isBenchmark = ['KSE100', 'KMI30', 'GOLD_24K', 'CPI_PK', 'USDPKR'].contains(ticker);
 
       DateTime startDate = DateTime.now();
       switch (_chartPeriod) {
@@ -104,7 +106,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       List<DateTime> startDates = [];
       
       // Find the absolute earliest date available for every active line
-      // FIX: Both tables use 'validity_date' for dates. No ternary needed here!
       if (fundData.isNotEmpty) startDates.add(DateTime.parse(fundData.first['validity_date'].toString()));
       if (_showKse100 && indexData.isNotEmpty) startDates.add(DateTime.parse(indexData.first['validity_date'].toString()));
       if (_showGold && goldData.isNotEmpty) startDates.add(DateTime.parse(goldData.first['validity_date'].toString()));

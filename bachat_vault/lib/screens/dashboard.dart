@@ -76,9 +76,25 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  // FIX 2: Added a helper function to catch and translate nasty network errors
+  String _getFriendlyErrorMessage(dynamic error) {
+    String errorString = error.toString();
+    if (errorString.contains('CERTIFICATE_VERIFY_FAILED') || errorString.contains('HandshakeException')) {
+      return "Secure connection blocked.\nPlease disable your VPN, Ad-Blocker, or check your network and try again.";
+    } else if (errorString.contains('SocketException') || errorString.toLowerCase().contains('network') || errorString.toLowerCase().contains('internet')) {
+      return "No internet connection.\nPlease check your Wi-Fi or mobile data.";
+    } else {
+      return "Unable to load data.\nPlease pull down to refresh.";
+    }
+  }
+
   Future<void> _fetchData() async {
     setState(() {
-      _isLoading = true;
+      // FIX 3 (Sub-fix): Only show the full screen loading spinner if we don't have data yet.
+      // This prevents the screen from going blank when the user pulls down to refresh.
+      if (_allFunds.isEmpty) {
+        _isLoading = true;
+      }
       _errorMessage = null;
     });
 
@@ -139,8 +155,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       'National Investment Trust Limited': 'National Investment Trust',
       'NBP Fund Management Limited': 'NBP Funds',
       'Pak Oman Asset Management Company Limited': 'Pak Oman Asset Management',
-      'Pak-Qatar Asset Management Company Limited':
-          'Pak Qatar Asset Management',
+      'Pak-Qatar Asset Management Company Limited': 'Pak Qatar Asset Management',
       'EFU Life Insurance Limited': 'EFU Life Insurance',
       'UBL Fund Managers Limited': 'UBL Funds',
     };
@@ -206,11 +221,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         _isLoading = false;
       });
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
-          _errorMessage = e.toString();
+          // Pass the error to the new helper instead of spitting out raw text
+          _errorMessage = _getFriendlyErrorMessage(e);
           _isLoading = false;
         });
+      }
     }
   }
 
@@ -291,7 +308,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           'Faysal Islamic Sovereign Plan II',
         )
         .replaceAll(
-          'Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)',
+          'Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)',
           'Faysal Nuumah Women Savers Plan',
         )
         .replaceAll(
@@ -307,7 +324,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           'Faysal Priority Ascend Plan III',
         )
         .replaceAll(
-          'Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)',
+          'Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)',
           'Faysal Barakaah Women Savers Plan',
         )
         .replaceAll(
@@ -596,9 +613,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 itemCount: topFunds.length,
                 separatorBuilder: (context, index) => const Divider(color: Colors.white12, height: 16), // Reduced divider height
                 itemBuilder: (context, index) {
-                  // ... Keep all the math and variables exactly the same ...
                   final fund = topFunds[index];
-                  // ... (Keep the rest of your itemBuilder logic) ...
                   final name = _cleanFundName(fund['fund_name'] ?? 'Unknown');
                   final isShariah =
                       (fund['is_shariah'] == 1 ||
@@ -1118,12 +1133,13 @@ class _DashboardScreenState extends State<DashboardScreen>
           centerTitle: false,
           backgroundColor: Colors.transparent,
           elevation: 0,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.white),
-              onPressed: _fetchData,
-            ),
+          
+          // FIX 3: Removed the manual refresh button to support modern "Pull to Refresh"
+          actions: const [
+            // Top right corner can be used for profile login in the future.
+            SizedBox(width: 48), 
           ],
+          
           flexibleSpace: ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -1142,177 +1158,194 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
           child: SafeArea(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: Colors.tealAccent),
-                  )
-                : _errorMessage != null
-                ? Center(
-                    child: Text(
-                      'Error: $_errorMessage',
-                      style: const TextStyle(color: Colors.redAccent),
-                    ),
-                  )
-                : SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 1. Tighter top spacing
-                      const SizedBox(height: 12), 
-                      const Center(
-                        child: Text(
-                          'Your Investment Value',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 13, // Slightly smaller
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      // 2. Removed the massive vertical: 4 padding on the TextField
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 40),
-                        child: Center(
-                          child: IntrinsicWidth(
-                            child: TextField(
-                              controller: _investmentController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              inputFormatters: [IndianNumberFormatter()],
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 32, // Slightly smaller to fit better
-                                fontWeight: FontWeight.w800,
-                                height: 1.2, // Tighter line height
+            // FIX 3: Wrapped the entire main body in a RefreshIndicator
+            child: RefreshIndicator(
+              color: Colors.tealAccent,
+              backgroundColor: const Color(0xFF1E293B),
+              onRefresh: _fetchData,
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: Colors.tealAccent),
+                    )
+                  : _errorMessage != null
+                      // FIX 2: Beautiful integrated Error Screen instead of tiny red text
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(), // Important: allows pull-to-refresh even when empty/error
+                          children: [
+                            SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+                            const Icon(Icons.wifi_off_rounded, color: Colors.white54, size: 64),
+                            const SizedBox(height: 16),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 40),
+                              child: Text(
+                                _errorMessage!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
                               ),
-                              decoration: const InputDecoration(
-                                prefixText: 'PKR ',
-                                prefixStyle: TextStyle(
-                                  color: Colors.tealAccent,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                border: InputBorder.none,
-                                isDense: true, // Forces the textfield to shrink-wrap its content
-                                contentPadding: EdgeInsets.zero, // Removes hidden default padding
-                              ),
-                              onChanged: (val) {
-                                setState(() {
-                                  _investmentAmount = double.tryParse(val.replaceAll(',', '')) ?? 0.0;
-                                });
-                              },
                             ),
-                          ),
-                        ),
-                      ),
-                      
-                      const SizedBox(height: 8), // Tight gap to filters
-
-                      // 3. Filter Buttons
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildDashFilterBtn('30D'),
-                          const SizedBox(width: 8), // Tighter gap between buttons
-                          _buildDashFilterBtn('1Y'),
-                          const SizedBox(width: 8),
-                          _buildDashFilterBtn('3Y'),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 16), // Gap before Benchmarks
-
-                      // 4. Benchmarks Moved UP and made compact
-                      _buildMarketOverviewSection(dbSortKey),
-
-                      const SizedBox(height: 16), // Gap before Top 5 Cards
-
-// --- TOP 5 CARDS (DYNAMIC HEIGHT CAROUSEL) ---
-SingleChildScrollView(
-  scrollDirection: Axis.horizontal,
-  physics: const BouncingScrollPhysics(),
-  // Apply the dynamic padding here:
-  padding: EdgeInsets.symmetric(horizontal: sidePadding), 
-  child: Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      SizedBox(
-        width: cardWidth,
-        child: _buildTop5Card('Top 5 Equity Funds', ['Equity'], dbSortKey),
-      ),
-      const SizedBox(width: 12), // Explicit, clean gap between cards
-      SizedBox(
-        width: cardWidth,
-        child: _buildTop5Card('Top 5 ETFs', ['Exchange Traded Fund'], dbSortKey),
-      ),
-      const SizedBox(width: 12), // Explicit, clean gap between cards
-      SizedBox(
-        width: cardWidth,
-        child: _buildTop5Card('Top 5 Money Market', ['Money Market'], dbSortKey),
-      ),
-    ],
-  ),
-),
-                      const SizedBox(height: 8),
-
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                          child: InkWell(
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => FullPerformanceScreen(
-                                  allFunds: _allFunds,
-                                  initialInvestment: _investmentAmount,
-                                  benchmarkStats: _benchmarkStats,
+                          ],
+                        )
+                      : SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(), // Important: allows pull-to-refresh
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 1. Tighter top spacing
+                            const SizedBox(height: 12), 
+                            const Center(
+                              child: Text(
+                                'Your Investment Value',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13, // Slightly smaller
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [Colors.tealAccent, Colors.teal],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
+                            // 2. Removed the massive vertical: 4 padding on the TextField
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 40),
+                              child: Center(
+                                child: IntrinsicWidth(
+                                  child: TextField(
+                                    controller: _investmentController,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    inputFormatters: [IndianNumberFormatter()],
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 32, // Slightly smaller to fit better
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.2, // Tighter line height
+                                    ),
+                                    decoration: const InputDecoration(
+                                      prefixText: 'PKR ',
+                                      prefixStyle: TextStyle(
+                                        color: Colors.tealAccent,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                      border: InputBorder.none,
+                                      isDense: true, // Forces the textfield to shrink-wrap its content
+                                      contentPadding: EdgeInsets.zero, // Removes hidden default padding
+                                    ),
+                                    onChanged: (val) {
+                                      setState(() {
+                                        _investmentAmount = double.tryParse(val.replaceAll(',', '')) ?? 0.0;
+                                      });
+                                    },
+                                  ),
                                 ),
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.tealAccent.withOpacity(0.3),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 8), // Tight gap to filters
+
+                            // 3. Filter Buttons
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildDashFilterBtn('30D'),
+                                const SizedBox(width: 8), // Tighter gap between buttons
+                                _buildDashFilterBtn('1Y'),
+                                const SizedBox(width: 8),
+                                _buildDashFilterBtn('3Y'),
+                              ],
+                            ),
+                            
+                            const SizedBox(height: 16), // Gap before Benchmarks
+
+                            // 4. Benchmarks Moved UP and made compact
+                            _buildMarketOverviewSection(dbSortKey),
+
+                            const SizedBox(height: 16), // Gap before Top 5 Cards
+
+                            // --- TOP 5 CARDS (DYNAMIC HEIGHT CAROUSEL) ---
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              // Apply the dynamic padding here:
+                              padding: EdgeInsets.symmetric(horizontal: sidePadding), 
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(
+                                    width: cardWidth,
+                                    child: _buildTop5Card('Top 5 Equity Funds', ['Equity'], dbSortKey),
+                                  ),
+                                  const SizedBox(width: 12), // Explicit, clean gap between cards
+                                  SizedBox(
+                                    width: cardWidth,
+                                    child: _buildTop5Card('Top 5 ETFs', ['Exchange Traded Fund'], dbSortKey),
+                                  ),
+                                  const SizedBox(width: 12), // Explicit, clean gap between cards
+                                  SizedBox(
+                                    width: cardWidth,
+                                    child: _buildTop5Card('Top 5 Money Market', ['Money Market'], dbSortKey),
                                   ),
                                 ],
                               ),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.analytics_outlined,
-                                    color: Colors.black87,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Explore Full Performance',
-                                    style: TextStyle(
-                                      color: Colors.black87,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800,
+                            ),
+                            const SizedBox(height: 8),
+
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                                child: InkWell(
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => FullPerformanceScreen(
+                                        allFunds: _allFunds,
+                                        initialInvestment: _investmentAmount,
+                                        benchmarkStats: _benchmarkStats,
+                                      ),
                                     ),
                                   ),
-                                ],
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [Colors.tealAccent, Colors.teal],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.tealAccent.withOpacity(0.3),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.analytics_outlined,
+                                          color: Colors.black87,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Explore Full Performance',
+                                          style: TextStyle(
+                                            color: Colors.black87,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(height: 40),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 40),
-                      ],
-                    ),
-                  ),
+            ),
           ),
         ),
       ),
