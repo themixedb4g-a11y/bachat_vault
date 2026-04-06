@@ -207,10 +207,18 @@ def run_optimized_brain():
 
             multiplier = (latest_nav * units) / past_nav
 
+            # --- ANOMALY DETECTOR GUARDRAIL ---
+            # If the fund moves more than +/- 30% in any given period, it's likely bad data.
             if pd.isna(multiplier) or math.isinf(multiplier):
+                stats_update[col] = None
+            elif multiplier > 1.30 or multiplier < 0.70:
+                print(
+                    f"🚨 ANOMALY DETECTED for {ticker}: {col} multiplier {multiplier} out of bounds. Skipping to protect app UI."
+                )
                 stats_update[col] = None
             else:
                 stats_update[col] = round(float(multiplier), 8)
+            # ----------------------------------
 
         for col, days in PERIODS.items():
             # --- CHANGED: THE 1D RETURN LDCP FAST-TRACK ---
@@ -268,10 +276,18 @@ def run_optimized_brain():
 
             multiplier = (latest_nav * units) / past_nav
 
+            # --- ANOMALY DETECTOR GUARDRAIL ---
+            # If the fund moves more than +/- 30% in any given period, it's likely bad data.
             if pd.isna(multiplier) or math.isinf(multiplier):
+                stats_update[col] = None
+            elif multiplier > 1.30 or multiplier < 0.70:
+                print(
+                    f"🚨 ANOMALY DETECTED for {ticker}: {col} multiplier {multiplier} out of bounds. Skipping to protect app UI."
+                )
                 stats_update[col] = None
             else:
                 stats_update[col] = round(float(multiplier), 8)
+            # ----------------------------------
 
         final_stats.append(stats_update)
 
