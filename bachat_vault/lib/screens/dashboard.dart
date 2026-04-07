@@ -508,7 +508,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   ) {
     // 1. Initial Filter
     var filtered = _allFunds.where((f) {
-      final cat = f['category']?.toString().trim() ?? '';
+      final cat = f['short_category']?.toString().trim() ?? '';
       final ticker = f['ticker']?.toString().trim() ?? ''; 
       return categories.contains(cat) && f[sortKey] != null && ticker != 'HBLTETF';
     }).toList();
@@ -625,7 +625,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 separatorBuilder: (context, index) => const Divider(color: Colors.white12, height: 16), // Reduced divider height
                 itemBuilder: (context, index) {
                   final fund = topFunds[index];
-                  final name = _cleanFundName(fund['fund_name'] ?? 'Unknown');
+                  final name = fund['short_name'] ?? fund['fund_name']?.toString() ?? 'Unknown';
                   final isShariah =
                       (fund['is_shariah'] == 1 ||
                       fund['is_shariah'] == '1' ||

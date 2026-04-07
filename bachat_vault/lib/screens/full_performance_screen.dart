@@ -196,28 +196,55 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       filtered = filtered.where((f) => f[sortKey] != null).toList();
     }
 
-    // SMART SORTING
+    // SMART SORTING (Domain-Aware Effective Date)
+    // Get today's date stripped of time (e.g., midnight today)
+    final DateTime todayRaw = DateTime.now();
+    final DateTime today = DateTime(todayRaw.year, todayRaw.month, todayRaw.day);
+
     filtered.sort((a, b) {
+      // 1. Safely grab the Returns (-999999 ensures empty data drops to the bottom)
       final valA = _selectedPeriod == 'Custom' 
-          ? (_customReturnsMap[a['ticker']] ?? -999.0) 
-          : (a[sortKey] as num?)?.toDouble() ?? -999.0;
+          ? (_customReturnsMap[a['ticker']] ?? -999999.0) 
+          : double.tryParse(a[sortKey]?.toString() ?? '') ?? -999999.0;
           
       final valB = _selectedPeriod == 'Custom' 
-          ? (_customReturnsMap[b['ticker']] ?? -999.0) 
-          : (b[sortKey] as num?)?.toDouble() ?? -999.0;
+          ? (_customReturnsMap[b['ticker']] ?? -999999.0) 
+          : double.tryParse(b[sortKey]?.toString() ?? '') ?? -999999.0;
       
+      // 2. Safely grab Dates and Return Logic
+      final dateStrA = a['last_validity_date']?.toString();
+      final dateStrB = b['last_validity_date']?.toString();
+      
+      DateTime dateA = dateStrA != null ? (DateTime.tryParse(dateStrA) ?? DateTime(1970)) : DateTime(1970);
+      DateTime dateB = dateStrB != null ? (DateTime.tryParse(dateStrB) ?? DateTime(1970)) : DateTime(1970);
+      
+      // Strip exact hours/minutes so daily comparisons are flawless
+      dateA = DateTime(dateA.year, dateA.month, dateA.day);
+      dateB = DateTime(dateB.year, dateB.month, dateB.day);
+
       final logicA = a['return_logic']?.toString().trim() ?? '';
       final logicB = b['return_logic']?.toString().trim() ?? '';
 
-      if (logicA == 'Absolute' && logicB == 'Absolute') {
-        final dateStrA = a['last_validity_date']?.toString();
-        final dateStrB = b['last_validity_date']?.toString();
-        final dateA = dateStrA != null ? (DateTime.tryParse(dateStrA) ?? DateTime(1970)) : DateTime(1970);
-        final dateB = dateStrB != null ? (DateTime.tryParse(dateStrB) ?? DateTime(1970)) : DateTime(1970);
-
-        int dateComparison = dateB.compareTo(dateA);
-        if (dateComparison != 0) return dateComparison;
+      // 3. APPLY YOUR CUSTOM LOGIC (Calculate the "Effective Date")
+      DateTime effectiveDateA = dateA;
+      // If Annualized AND the date is Today or Future -> Lock it to 'Today' so they all group together
+      if (logicA == 'Annualized' && (dateA.isAfter(today) || dateA.isAtSameMomentAs(today))) {
+        effectiveDateA = today; 
       }
+
+      DateTime effectiveDateB = dateB;
+      if (logicB == 'Annualized' && (dateB.isAfter(today) || dateB.isAtSameMomentAs(today))) {
+        effectiveDateB = today;
+      }
+
+      // 4. PRIMARY SORT: Compare Effective Dates (Freshest data at the top)
+      int dateComparison = effectiveDateB.compareTo(effectiveDateA);
+      
+      if (dateComparison != 0) {
+        return dateComparison; // Push older dates down
+      }
+      
+      // 5. SECONDARY SORT: If Effective Dates match, Highest Return wins
       return valB.compareTo(valA);
     });
 
