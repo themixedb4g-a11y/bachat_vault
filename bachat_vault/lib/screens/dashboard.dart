@@ -160,103 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       'UBL Fund Managers Limited': 'UBL Funds',
     };
 
-    try {
-      final masterResponse = await supabase.from('master_funds').select();
-      final statsResponse = await supabase
-          .from('performance_stats')
-          .select(
-            'ticker, return_1d, return_mtd, return_30d, return_fytd, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y, ter_mtd, ter_ytd, last_validity_date',
-          );
-
-      _benchmarkStats['KSE100'] = statsResponse.firstWhere(
-        (s) => s['ticker'] == 'KSE100',
-        orElse: () => <String, dynamic>{},
-      );
-      _benchmarkStats['KMI30'] = statsResponse.firstWhere(
-        (s) => s['ticker'] == 'KMI30',
-        orElse: () => <String, dynamic>{},
-      );
-      _benchmarkStats['GOLD_24K'] = statsResponse.firstWhere(
-        (s) => s['ticker'] == 'GOLD_24K',
-        orElse: () => <String, dynamic>{},
-      );
-      _benchmarkStats['CPI_PK'] = statsResponse.firstWhere(
-        (s) => s['ticker'] == 'CPI_PK',
-        orElse: () => <String, dynamic>{},
-      );
-
-      final List<Map<String, dynamic>> combined = [];
-
-      for (var mf in masterResponse) {
-        final ticker = mf['ticker'];
-        final stats = statsResponse.firstWhere(
-          (s) => s['ticker'] == ticker,
-          orElse: () => <String, dynamic>{},
-        );
-
-        final rawCat = mf['category']?.toString().trim() ?? '';
-        final rawAmc = mf['amc_name']?.toString().trim() ?? '';
-
-        combined.add({
-          ...mf,
-          'category': categoryMap[rawCat] ?? rawCat,
-          'amc_name': amcMap[rawAmc] ?? rawAmc,
-          'return_1d': stats['return_1d'],
-          'return_mtd': stats['return_mtd'],
-          'return_30d': stats['return_30d'],
-          'return_fytd': stats['return_fytd'],
-          'return_1y': stats['return_1y'],
-          'return_3y': stats['return_3y'],
-          'return_5y': stats['return_5y'],
-          'return_10y': stats['return_10y'],
-          'return_15y': stats['return_15y'],
-          'return_20y': stats['return_20y'],
-          'ter_mtd': stats['ter_mtd'],
-          'ter_ytd': stats['ter_ytd'],
-          'last_validity_date': stats['last_validity_date'],
-        });
-      }
-      setState(() {
-        _allFunds = combined;
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          // Pass the error to the new helper instead of spitting out raw text
-          _errorMessage = _getFriendlyErrorMessage(e);
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  String _getGreetingText() {
-    final hour = DateTime.now().hour; // 24-hour format (0 to 23)
-
-    if (hour >= 5 && hour < 12) {
-      return 'Good Morning';   // 5:00 AM to 11:59 AM
-    } 
-    if (hour >= 12 && hour < 17) {
-      return 'Good Afternoon'; // 12:00 PM to 4:59 PM
-    } 
-    if (hour >= 17 && hour < 22) {
-      return 'Good Evening';   // 5:00 PM to 9:59 PM
-    } 
-    
-    // This catches everything else: 11:00 PM (23) and Midnight to 4:59 AM (0, 1, 2, 3, 4)
-    return 'Good Night'; 
-  }
-
-  String _getGreetingEmoji() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return '☀️';
-    if (hour < 17) return '🌤️';
-    if (hour < 20) return '🌙';
-    return '🌙';
-  }
-
-  String _cleanFundName(String name) {
+    String _cleanFundName(String name) {
     return name
         .replaceAll('Exchange Traded Fund', 'ETF')
         .replaceAll(
@@ -444,6 +348,10 @@ class _DashboardScreenState extends State<DashboardScreen>
           'Meezan Super Saver Plan',
         )
         .replaceAll(
+          'Meezan Capital Protected Fund III (Meezan Capital Secure Plan I)',
+          'Meezan Capital Secure Plan I',
+        )
+        .replaceAll(
           'ABL Islamic Financial Planning Fund (Conservative Allocation Plan)',
           'ABL Islamic FP Fund (Conservative)',
         )
@@ -489,6 +397,109 @@ class _DashboardScreenState extends State<DashboardScreen>
         )
         .replaceAll('Government', 'Govt.')
         .trim();
+  }
+
+    try {
+      final masterResponse = await supabase.from('master_funds').select();
+      final statsResponse = await supabase
+          .from('performance_stats')
+          .select(
+            'ticker, return_1d, return_mtd, return_30d, return_fytd, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y, ter_mtd, ter_ytd, last_validity_date',
+          );
+
+      _benchmarkStats['KSE100'] = statsResponse.firstWhere(
+        (s) => s['ticker'] == 'KSE100',
+        orElse: () => <String, dynamic>{},
+      );
+      _benchmarkStats['KMI30'] = statsResponse.firstWhere(
+        (s) => s['ticker'] == 'KMI30',
+        orElse: () => <String, dynamic>{},
+      );
+      _benchmarkStats['GOLD_24K'] = statsResponse.firstWhere(
+        (s) => s['ticker'] == 'GOLD_24K',
+        orElse: () => <String, dynamic>{},
+      );
+      _benchmarkStats['CPI_PK'] = statsResponse.firstWhere(
+        (s) => s['ticker'] == 'CPI_PK',
+        orElse: () => <String, dynamic>{},
+      );
+
+      final List<Map<String, dynamic>> combined = [];
+
+      for (var mf in masterResponse) {
+        final ticker = mf['ticker'];
+        final stats = statsResponse.firstWhere(
+          (s) => s['ticker'] == ticker,
+          orElse: () => <String, dynamic>{},
+        );
+
+        // Grab the raw MUFAP data
+        final rawCat = mf['category']?.toString().trim() ?? '';
+        final rawAmc = mf['amc_name']?.toString().trim() ?? '';
+        final rawName = mf['fund_name']?.toString() ?? 'Unknown';
+
+        combined.add({
+          ...mf, // <-- This brings in the ORIGINAL long names so the Individual Page can use them!
+          
+          // --- THE TWO-KEY INJECTIONS (Short Names for the UI) ---
+          'short_category': categoryMap[rawCat] ?? rawCat,
+          'short_amc_name': amcMap[rawAmc] ?? rawAmc,
+          'short_name': _cleanFundName(rawName),
+          // -------------------------------------------------------
+
+          'return_1d': stats['return_1d'],
+          'return_mtd': stats['return_mtd'],
+          'return_30d': stats['return_30d'],
+          'return_fytd': stats['return_fytd'],
+          'return_1y': stats['return_1y'],
+          'return_3y': stats['return_3y'],
+          'return_5y': stats['return_5y'],
+          'return_10y': stats['return_10y'],
+          'return_15y': stats['return_15y'],
+          'return_20y': stats['return_20y'],
+          'ter_mtd': stats['ter_mtd'],
+          'ter_ytd': stats['ter_ytd'],
+          'last_validity_date': stats['last_validity_date'],
+        });
+      }
+      setState(() {
+        _allFunds = combined;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          // Pass the error to the new helper instead of spitting out raw text
+          _errorMessage = _getFriendlyErrorMessage(e);
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _getGreetingText() {
+    final hour = DateTime.now().hour; // 24-hour format (0 to 23)
+
+    if (hour >= 5 && hour < 12) {
+      return 'Good Morning';   // 5:00 AM to 11:59 AM
+    } 
+    if (hour >= 12 && hour < 17) {
+      return 'Good Afternoon'; // 12:00 PM to 4:59 PM
+    } 
+    if (hour >= 17 && hour < 22) {
+      return 'Good Evening';   // 5:00 PM to 9:59 PM
+    } 
+    
+    // This catches everything else: 11:00 PM (23) and Midnight to 4:59 AM (0, 1, 2, 3, 4)
+    return 'Good Night'; 
+  }
+
+  String _getGreetingEmoji() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return '☀️';
+    if (hour < 17) return '🌤️';
+    if (hour < 20) return '🌙';
+    return '🌙';
   }
 
   List<Map<String, dynamic>> _getTop5Funds(

@@ -98,7 +98,7 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
 }
 
 // ============================================================================
-// LUMPSUM CALCULATOR (UPGRADED WITH INFLATION)
+// LUMPSUM CALCULATOR
 // ============================================================================
 class LumpsumCalculator extends StatefulWidget {
   const LumpsumCalculator({super.key});
@@ -110,12 +110,12 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
   final TextEditingController _amountController = TextEditingController(text: '10,00,000');
   final TextEditingController _rateController = TextEditingController(text: '16');
   final TextEditingController _yearsController = TextEditingController(text: '10');
-  final TextEditingController _inflationController = TextEditingController(text: '0'); // NEW
+  final TextEditingController _inflationController = TextEditingController(text: '0'); 
 
   double _totalInvested = 0; 
   double _estimatedReturns = 0; 
   double _totalValue = 0;
-  double _adjustedTotalValue = 0; // NEW
+  double _adjustedTotalValue = 0; 
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
@@ -129,18 +129,17 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
     final double principal = double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
     final double rate = double.tryParse(_rateController.text.replaceAll(',', '')) ?? 0;
     final double years = double.tryParse(_yearsController.text.replaceAll(',', '')) ?? 0;
-    final double inflation = double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0; // NEW
+    final double inflation = double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0; 
 
     if (principal > 0 && years > 0) {
       final double finalValue = principal * pow((1 + (rate / 100)), years);
-      // NEW MATH: Discount back to present value using inflation
       final double adjustedValue = inflation > 0 ? finalValue / pow((1 + (inflation / 100)), years) : finalValue;
 
       setState(() { 
         _totalInvested = principal; 
         _totalValue = finalValue; 
         _estimatedReturns = finalValue - principal; 
-        _adjustedTotalValue = adjustedValue; // NEW
+        _adjustedTotalValue = adjustedValue; 
       });
     } else {
       setState(() { _totalInvested = 0; _totalValue = 0; _estimatedReturns = 0; _adjustedTotalValue = 0; });
@@ -189,7 +188,6 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
                     _buildField(label: 'Lumpsum Amount', prefix: 'PKR', suffix: '', controller: _amountController, isCurrency: true), const SizedBox(height: 16),
                     Row(children: [Expanded(child: _buildField(label: 'Expected Return', prefix: '', suffix: '%', controller: _rateController)), const SizedBox(width: 16), Expanded(child: _buildField(label: 'Time Period', prefix: '', suffix: 'Years', controller: _yearsController))]),
                     const SizedBox(height: 16),
-                    // --- NEW: INFLATION ACCORDION ---
                     Theme(
                       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                       child: ExpansionTile(
@@ -229,7 +227,6 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
                     _buildResultRow('Total Invested', 'PKR ${_currencyFormat.format(_totalInvested)}', Colors.white), const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white12)),
                     _buildResultRow('Estimated Returns', '+PKR ${_currencyFormat.format(_estimatedReturns)}', Colors.greenAccent), const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white12)),
                     _buildResultRow('Total Value', 'PKR ${_currencyFormat.format(_totalValue)}', Colors.tealAccent, isTotal: true),
-                    // --- NEW: INFLATION OUTPUT ---
                     if (showInflation) ...[
                       const SizedBox(height: 6),
                       Row(
@@ -256,7 +253,7 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
 }
 
 // ============================================================================
-// SIP CALCULATOR (UPGRADED WITH INFLATION)
+// SIP CALCULATOR (WITH INTERNAL DATA FETCH & TWO-KEY CLEANER)
 // ============================================================================
 class SipCalculator extends StatefulWidget {
   const SipCalculator({super.key});
@@ -269,12 +266,12 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
   final TextEditingController _stepUpController = TextEditingController(text: '10');
   final TextEditingController _rateController = TextEditingController(text: '16');
   final TextEditingController _yearsController = TextEditingController(text: '10');
-  final TextEditingController _inflationController = TextEditingController(text: '0'); // NEW
+  final TextEditingController _inflationController = TextEditingController(text: '0'); 
 
   double _totalInvested = 0; 
   double _estimatedReturns = 0; 
   double _totalValue = 0;
-  double _adjustedTotalValue = 0; // NEW
+  double _adjustedTotalValue = 0; 
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
@@ -294,29 +291,91 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     _fetchFundsData(); 
   }
 
+  // --- LOCAL DATA CLEANERS ---
+  final Map<String, String> categoryMap = {
+    'Equity': 'Equity', 'Shariah Compliant Equity': 'Equity',
+    'Money Market': 'Money Market', 'Shariah Compliant Money Market': 'Money Market',
+    'Income': 'Income', 'Shariah Compliant Income': 'Income',
+    'Capital Protected': 'Capital Protected', 'Shariah Compliant Capital Protected': 'Capital Protected',
+    'Capital Protected - Income': 'Capital Protected - Income',
+    'Aggressive Fixed Income': 'Aggressive Fixed Income', 'Shariah Compliant Aggressive Fixed Income': 'Aggressive Fixed Income',
+    'Balanced': 'Balanced', 'Shariah Compliant Balanced': 'Balanced',
+    'Asset Allocation': 'Asset Allocation', 'Shariah Compliant Asset Allocation': 'Asset Allocation',
+    'Fund of Funds': 'Fund of Funds', 'Shariah Compliant Fund of Funds': 'Fund of Funds', 'Shariah Compliant Fund of Funds - CPPI': 'Fund of Funds',
+    'Index Tracker': 'Index Tracker', 'Shariah Compliant Index Tracker': 'Index Tracker', 'Index': 'Index',
+    'Shariah Compliant Commodities': 'Commodities',
+    'Exchange Traded Fund': 'Exchange Traded Fund', 'Shariah Compliant Exchange Traded Fund': 'Exchange Traded Fund',
+    'Dedicated Equity': 'Dedicated Equity', 'Shariah Compliant Dedicated Equity': 'Dedicated Equity',
+  };
+
   String _cleanFundName(String name) {
-    return name.replaceAll('Exchange Traded Fund', 'ETF').replaceAll('Government', 'Govt.').trim();
-    // (Add your full giant cleaner block back here)
+    if (name.isEmpty) return name;
+    return name
+        .replaceAll('Exchange Traded Fund', 'ETF')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan I)', 'NBP Islamic Principal Protection Plan I')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan II)', 'NBP Islamic Principal Protection Plan II')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan III)', 'NBP Islamic Principal Protection Plan III')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan IV)', 'NBP Islamic Principal Protection Plan IV')
+        .replaceAll('Pak-Qatar Asset Allocation Plan I (PQAAP  IA)', 'Pak Qatar Asset Allocation Plan I')
+        .replaceAll('Pak-Qatar Asset Allocation Plan II (PQAAP  IIA)', 'Pak Qatar Asset Allocation Plan II')
+        .replaceAll('Pak-Qatar Asset Allocation Plan III (PQAAP  IIIA)', 'Pak Qatar Asset Allocation Plan III')
+        .replaceAll('Alhamra Opportunity Fund (Dividend Strategy Plan)', 'Alhamra Opportunity Fund')
+        .replaceAll('MCB Pakistan Opportunity Fund (MCB Pakistan  Dividend Yield Plan)', 'MCB Pakistan Opportunity Fund')
+        .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
+        .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
+        .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
+        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
+        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
+        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
+        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
+        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
+        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
+        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
+        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
+        .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan I)', 'Faysal Islamic Financial Growth Plan I')
+        .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan II)', 'Faysal Islamic Financial Growth Plan II')
+        .replaceAll('Atlas Islamic Fund of Funds (Atlas Aggressive Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Aggressive)')
+        .replaceAll('Atlas Islamic Fund of Funds (Atlas Conservative Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Conservative)')
+        .replaceAll('Atlas Islamic Fund of Funds (Atlas Moderate Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Moderate)')
+        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Moderate Allocation Plan)', 'Alfalah GHP IPP Fund (Moderate)')
+        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Active Allocation Plan II)', 'Alfalah GHP IPP Fund (Active)')
+        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Balance Allocation Plan)', 'Alfalah GHP IPP Fund (Balance)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Active Allocation Plan)', 'Alfalah GHP PP Fund (Active)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Conservative Allocation Plan)', 'Alfalah GHP PP Fund (Conservative)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Capital Preservation Plan IV)', 'Alfalah GHP PP Fund (Capital Preservation Plan IV)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Moderate Allocation Plan)', 'Alfalah GHP PP Fund (Moderate)')
+        .replaceAll('Alfalah Financial Value Fund (Alfalah Financial Value Plan I)', 'Alfalah Financial Value Plan I')
+        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan I)', 'Alfalah Islamic Sovereign Plan I')
+        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan II)', 'Alfalah Islamic Sovereign Plan II')
+        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan III)', 'Alfalah Islamic Sovereign Plan III')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Very Conservative Allocation Plan)', 'Meezan FP Fund of Funds (Very Conservative)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Moderate)', 'Meezan FP Fund of Funds (Moderate)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Conservative)', 'Meezan FP Fund of Funds (Conservative)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (MAAP I)', 'Meezan FP Fund of Funds (MAAP-I)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Aggressive)', 'Meezan FP Fund of Funds (Aggressive)')
+        .replaceAll('Meezan Dynamic Asset Allocation Fund (Meezan Dividend Yield Plan)', 'Meezan Dynamic Asset Allocation Fund')
+        .replaceAll('Meezan Daily Income Fund (Meezan Mahana Munafa Plan)', 'Meezan Mahana Munafa Plan')
+        .replaceAll('Meezan Daily Income Fund (Meezan Munafa Plan I)', 'Meezan Munafa Plan I')
+        .replaceAll('Meezan Daily Income Fund (Meezan Sehl Account Plan) (MSHP)', 'Meezan Sehl Account Plan')
+        .replaceAll('Meezan Daily Income Fund (Meezan Super Saver Plan) (MSSP)', 'Meezan Super Saver Plan')
+        .replaceAll('Meezan Capital Protected Fund III (Meezan Capital Secure Plan I)', 'Meezan Capital Secure Plan I')
+        .replaceAll('ABL Islamic Financial Planning Fund (Conservative Allocation Plan)', 'ABL Islamic FP Fund (Conservative)')
+        .replaceAll('ABL Financial Planning Fund (Strategic Allocation Plan)', 'ABL FP Fund (Strategic Allocation Plan)')
+        .replaceAll('ABL Financial Planning Fund (Conservative Plan)', 'ABL Islamic FP Fund (Conservative)')
+        .replaceAll('ABL Islamic Financial Planning Fund (Active Allocation Plan)', 'ABL Islamic FP Fund (Active)')
+        .replaceAll('ABL Islamic Financial Planning Fund (Capital Preservation Plan I)', 'ABL Islamic FP Fund (Capital Preservation Plan I)')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan I)', 'ABL Special Saving Plan I')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan II)', 'ABL Special Saving Plan II')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan III)', 'ABL Special Saving Plan III')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan IV)', 'ABL Special Saving Plan IV')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan V)', 'ABL Special Saving Plan V')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan VI)', 'ABL Special Saving Plan VI')
+        .replaceAll('Government', 'Govt.')
+        .trim();
   }
 
   Future<void> _fetchFundsData() async {
     final SupabaseClient supabase = Supabase.instance.client;
-    // ... (Keep all your existing _fetchFundsData code exactly as it is) ...
-    final Map<String, String> categoryMap = {
-      'Equity': 'Equity', 'Shariah Compliant Equity': 'Equity',
-      'Money Market': 'Money Market', 'Shariah Compliant Money Market': 'Money Market',
-      'Income': 'Income', 'Shariah Compliant Income': 'Income',
-      'Capital Protected': 'Capital Protected', 'Shariah Compliant Capital Protected': 'Capital Protected',
-      'Capital Protected - Income': 'Capital Protected - Income',
-      'Aggressive Fixed Income': 'Aggressive Fixed Income', 'Shariah Compliant Aggressive Fixed Income': 'Aggressive Fixed Income',
-      'Balanced': 'Balanced', 'Shariah Compliant Balanced': 'Balanced',
-      'Asset Allocation': 'Asset Allocation', 'Shariah Compliant Asset Allocation': 'Asset Allocation',
-      'Fund of Funds': 'Fund of Funds', 'Shariah Compliant Fund of Funds': 'Fund of Funds', 'Shariah Compliant Fund of Funds - CPPI': 'Fund of Funds',
-      'Index Tracker': 'Index Tracker', 'Shariah Compliant Index Tracker': 'Index Tracker', 'Index': 'Index',
-      'Shariah Compliant Commodities': 'Commodities',
-      'Exchange Traded Fund': 'Exchange Traded Fund', 'Shariah Compliant Exchange Traded Fund': 'Exchange Traded Fund',
-      'Dedicated Equity': 'Dedicated Equity', 'Shariah Compliant Dedicated Equity': 'Dedicated Equity',
-    };
 
     try {
       final masterResponse = await supabase.from('master_funds').select('ticker, fund_name, category');
@@ -328,6 +387,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
       for (var mf in masterResponse) {
         final rawCat = mf['category']?.toString().trim() ?? '';
         final mappedCat = categoryMap[rawCat] ?? rawCat;
+        final rawName = mf['fund_name']?.toString() ?? 'Unknown';
 
         if (rawCat.toUpperCase().contains('VPS') || mappedCat.toUpperCase().contains('VPS')) continue;
         if (mappedCat == 'Crypto' || ['KSE100', 'KMI30', 'GOLD_24K', 'CPI_PK'].contains(mf['ticker'])) continue;
@@ -337,8 +397,10 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
 
         combined.add({
           'ticker': ticker,
-          'fund_name': mf['fund_name'] ?? 'Unknown',
-          'category': mappedCat,
+          'fund_name': rawName,
+          'short_name': _cleanFundName(rawName),
+          'category': rawCat,
+          'short_category': mappedCat,
           'return_1y': stats['return_1y'],
           'return_3y': stats['return_3y'],
           'return_5y': stats['return_5y'],
@@ -370,7 +432,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     final double stepUpPercentage = double.tryParse(_stepUpController.text.replaceAll(',', '')) ?? 0;
     final double expectedReturn = double.tryParse(_rateController.text.replaceAll(',', '')) ?? 0;
     final double years = double.tryParse(_yearsController.text.replaceAll(',', '')) ?? 0;
-    final double inflation = double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0; // NEW
+    final double inflation = double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0; 
 
     if (initialMonthlyInvestment > 0 && years > 0) {
       double totalBalance = 0; double totalInvested = 0; double currentMonthlySip = initialMonthlyInvestment;
@@ -381,14 +443,13 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
         if (month % 12 == 0) currentMonthlySip += currentMonthlySip * (stepUpPercentage / 100);
       }
       
-      // NEW MATH: Discount the final total balance for inflation
       final double adjustedValue = inflation > 0 ? totalBalance / pow((1 + (inflation / 100)), years) : totalBalance;
 
       setState(() { 
         _totalInvested = totalInvested; 
         _totalValue = totalBalance; 
         _estimatedReturns = totalBalance - totalInvested; 
-        _adjustedTotalValue = adjustedValue; // NEW
+        _adjustedTotalValue = adjustedValue; 
       });
     } else {
       setState(() { _totalInvested = 0; _totalValue = 0; _estimatedReturns = 0; _adjustedTotalValue = 0; });
@@ -507,9 +568,10 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     super.build(context);
     final bool showInflation = (double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0) > 0;
     
+    // Filters using the short categories we injected
     List<Map<String, dynamic>> filteredFunds = _selectedCategory == 'All' 
         ? _allFunds 
-        : _allFunds.where((f) => f['category'] == _selectedCategory).toList();
+        : _allFunds.where((f) => (f['short_category'] ?? f['category']) == _selectedCategory).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -529,7 +591,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
                     Row(children: [Expanded(child: _buildField(label: 'Expected Return', prefix: '', suffix: '%', controller: _rateController)), const SizedBox(width: 16), Expanded(child: _buildField(label: 'Time Period', prefix: '', suffix: 'Years', controller: _yearsController))]),
                     
                     const SizedBox(height: 16),
-                    // --- NEW: INFLATION ACCORDION ---
                     Theme(
                       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                       child: ExpansionTile(
@@ -582,7 +643,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
                                 const DropdownMenuItem(value: null, child: Text('Choose a fund...', style: TextStyle(color: Colors.white54))),
                                 ...filteredFunds.map((f) => DropdownMenuItem(
                                   value: f['ticker'] as String, 
-                                  child: Text(_cleanFundName(f['fund_name']?.toString() ?? 'Unknown'), overflow: TextOverflow.ellipsis, maxLines: 1)
+                                  child: Text(f['short_name'] ?? f['fund_name']?.toString() ?? 'Unknown', overflow: TextOverflow.ellipsis, maxLines: 1)
                                 )).toList()
                               ],
                               onChanged: _onFundSelected,
@@ -608,7 +669,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
                     _buildResultRow('Total Invested', 'PKR ${_currencyFormat.format(_totalInvested)}', Colors.white), const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white12)),
                     _buildResultRow('Estimated Returns', '+PKR ${_currencyFormat.format(_estimatedReturns)}', Colors.greenAccent), const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white12)),
                     _buildResultRow('Total Value', 'PKR ${_currencyFormat.format(_totalValue)}', Colors.tealAccent, isTotal: true),
-                    // --- NEW: INFLATION OUTPUT ---
                     if (showInflation) ...[
                       const SizedBox(height: 6),
                       Row(
@@ -634,6 +694,9 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
   }
 }
 
+// ============================================================================
+// SWP CALCULATOR
+// ============================================================================
 class SwpCalculator extends StatefulWidget {
   const SwpCalculator({super.key});
   @override
@@ -758,6 +821,9 @@ class _SwpCalculatorState extends State<SwpCalculator> with AutomaticKeepAliveCl
   }
 }
 
+// ============================================================================
+// FIRE CALCULATOR
+// ============================================================================
 class FireCalculator extends StatefulWidget {
   const FireCalculator({super.key});
   @override

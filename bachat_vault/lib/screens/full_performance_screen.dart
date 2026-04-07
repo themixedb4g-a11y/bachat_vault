@@ -120,10 +120,17 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   void _setupFilters() {
     final Set<String> categorySet = {};
     final Set<String> amcSet = {};
+    
     for (var mf in widget.allFunds) {
-      final cat = mf['category']; if (cat != null && cat.toString().isNotEmpty) categorySet.add(cat.toString().trim());
-      final amc = mf['amc_name']; if (amc != null && amc.toString().isNotEmpty) amcSet.add(amc.toString().trim());
+      // --- UPDATED: Look for the short keys first, fallback to the raw keys if missing ---
+      final cat = mf['short_category'] ?? mf['category']; 
+      if (cat != null && cat.toString().isNotEmpty) categorySet.add(cat.toString().trim());
+      
+      final amc = mf['short_amc_name'] ?? mf['amc_name']; 
+      if (amc != null && amc.toString().isNotEmpty) amcSet.add(amc.toString().trim());
+      // ---------------------------------------------------------------------------------
     }
+    
     setState(() {
       _categories = ['All', ...categorySet.toList()..sort()];
       _amcs = ['All', ...amcSet.toList()..sort()];
@@ -162,17 +169,20 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
       filtered = filtered.where((f) {
-        final name = f['fund_name']?.toString().toLowerCase() ?? '';
-        final amc = f['amc_name']?.toString().toLowerCase() ?? '';
+        // --- UPDATED: Search using the short names ---
+        final name = (f['short_name'] ?? f['fund_name'])?.toString().toLowerCase() ?? '';
+        final amc = (f['short_amc_name'] ?? f['amc_name'])?.toString().toLowerCase() ?? '';
         return name.contains(query) || amc.contains(query);
       }).toList();
     } else {
       // Normal Dropdown Filters apply ONLY if Search is empty
       if (_selectedCategory != 'All') {
-        filtered = filtered.where((f) => f['category']?.toString().trim() == _selectedCategory).toList();
+        // --- UPDATED: Filter using short category ---
+        filtered = filtered.where((f) => (f['short_category'] ?? f['category'])?.toString().trim() == _selectedCategory).toList();
       }
       if (_selectedAmc != 'All') {
-        filtered = filtered.where((f) => f['amc_name']?.toString().trim() == _selectedAmc).toList();
+        // --- UPDATED: Filter using short AMC name ---
+        filtered = filtered.where((f) => (f['short_amc_name'] ?? f['amc_name'])?.toString().trim() == _selectedAmc).toList();
       }
       if (_selectedShariah == 'Islamic') {
         filtered = filtered.where((f) => f['is_shariah'] == 1 || f['is_shariah'] == '1' || f['is_shariah'] == true).toList();
@@ -336,12 +346,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     } finally {
       setState(() { _isCustomLoading = false; });
     }
-  }
-
-  // --- NAME CLEANER ---
-  String _cleanFundName(String name) {
-    return name.replaceAll('Exchange Traded Fund', 'ETF').replaceAll('Government', 'Govt.').trim();
-    // (I kept it brief here for visual clarity, but feel free to paste your giant 50-line replacement block right back in here!)
   }
 
   @override
@@ -610,9 +614,9 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                             final fund = _displayedFunds[index];
                             final ticker = fund['ticker'] ?? '';
                             final isFav = _favoriteTickers.contains(ticker);
-                            final fundName = _cleanFundName(fund['fund_name']?.toString() ?? 'Unknown');
-                            final amcName = fund['amc_name'] ?? '';
-                            final category = fund['category'] ?? '';
+                            final fundName = fund['short_name'] ?? fund['fund_name']?.toString() ?? 'Unknown';
+                            final amcName = fund['short_amc_name'] ?? fund['amc_name'] ?? '';
+                            final category = fund['short_category'] ?? fund['category'] ?? '';
                             final riskProfile = fund['risk_profile'] ?? '';
                             final isShariah = (fund['is_shariah'] == 1 || fund['is_shariah'] == '1' || fund['is_shariah'] == true);
                             
