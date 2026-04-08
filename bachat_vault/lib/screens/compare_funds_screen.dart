@@ -196,7 +196,18 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
 
       List<Future> futures = [];
       for (String ticker in validTickers) {
-        futures.add(supabase.from('daily_nav').select('validity_date, nav').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true));
+        // THE FIX: Smart fetch for both tables
+        futures.add(() async {
+          final navRes = await supabase.from('daily_nav').select('validity_date, nav').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true);
+          if (navRes.isNotEmpty) return navRes; 
+
+          final benchRes = await supabase.from('benchmarks').select('validity_date, value').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true);
+          return benchRes.map((e) => {
+            'validity_date': e['validity_date'], 
+            'nav': e['value']
+          }).toList();
+        }());
+        
         futures.add(supabase.from('payout_history').select('payout_date, payout_amount, ex_nav').eq('ticker', ticker).gte('payout_date', startDateStr));
       }
       final responses = await Future.wait(futures);
