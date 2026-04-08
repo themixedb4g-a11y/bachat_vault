@@ -5,7 +5,7 @@ import 'dart:ui';
 import 'dart:math' as math;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:bachat_vault/screens/fund_details_screen.dart';
-import 'package:fl_chart/fl_chart.dart'; // <-- Added Chart Import
+import 'package:fl_chart/fl_chart.dart';
 
 class CompareFundsScreen extends StatefulWidget {
   final List<Map<String, dynamic>> allFunds;
@@ -44,78 +44,15 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
-  String _cleanFundName(String name) {
-    return name
-        .replaceAll('Exchange Traded Fund', 'ETF')
-        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan I)', 'NBP Islamic Principal Protection Plan I')
-        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan II)', 'NBP Islamic Principal Protection Plan II')
-        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan III)', 'NBP Islamic Principal Protection Plan III')
-        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan IV)', 'NBP Islamic Principal Protection Plan IV')
-        .replaceAll('Pak-Qatar Asset Allocation Plan I (PQAAP  IA)', 'Pak Qatar Asset Allocation Plan I')
-        .replaceAll('Pak-Qatar Asset Allocation Plan II (PQAAP  IIA)', 'Pak Qatar Asset Allocation Plan II')
-        .replaceAll('Pak-Qatar Asset Allocation Plan III (PQAAP  IIIA)', 'Pak Qatar Asset Allocation Plan III')
-        .replaceAll('Alhamra Opportunity Fund (Dividend Strategy Plan)', 'Alhamra Opportunity Fund')
-        .replaceAll('MCB Pakistan Opportunity Fund (MCB Pakistan  Dividend Yield Plan)', 'MCB Pakistan Opportunity Fund')
-        .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
-        .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
-        .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
-        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
-        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
-        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
-        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
-        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
-        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
-        .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan I)', 'Faysal Islamic Financial Growth Plan I')
-        .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan II)', 'Faysal Islamic Financial Growth Plan II')
-        .replaceAll('Atlas Islamic Fund of Funds (Atlas Aggressive Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Aggressive)')
-        .replaceAll('Atlas Islamic Fund of Funds (Atlas Conservative Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Conservative)')
-        .replaceAll('Atlas Islamic Fund of Funds (Atlas Moderate Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Moderate)')
-        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Moderate Allocation Plan)', 'Alfalah GHP IPP Fund (Moderate)')
-        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Active Allocation Plan II)', 'Alfalah GHP IPP Fund (Active)')
-        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Balance Allocation Plan)', 'Alfalah GHP IPP Fund (Balance)')
-        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Active Allocation Plan)', 'Alfalah GHP PP Fund (Active)')
-        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Conservative Allocation Plan)', 'Alfalah GHP PP Fund (Conservative)')
-        .replaceAll('Alfalah GHP Prosperity Planning Fund (Capital Preservation Plan IV)', 'Alfalah GHP PP Fund (Capital Preservation Plan IV)')
-        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Moderate Allocation Plan)', 'Alfalah GHP PP Fund (Moderate)')
-        .replaceAll('Alfalah Financial Value Fund (Alfalah Financial Value Plan I)', 'Alfalah Financial Value Plan I')
-        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan I)', 'Alfalah Islamic Sovereign Plan I')
-        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan II)', 'Alfalah Islamic Sovereign Plan II')
-        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan III)', 'Alfalah Islamic Sovereign Plan III')
-        .replaceAll('Meezan Financial Planning Fund of Funds (Very Conservative Allocation Plan)', 'Meezan FP Fund of Funds (Very Conservative)')
-        .replaceAll('Meezan Financial Planning Fund of Funds (Moderate)', 'Meezan FP Fund of Funds (Moderate)')
-        .replaceAll('Meezan Financial Planning Fund of Funds (Conservative)', 'Meezan FP Fund of Funds (Conservative)')
-        .replaceAll('Meezan Financial Planning Fund of Funds (MAAP I)', 'Meezan FP Fund of Funds (MAAP-I)')
-        .replaceAll('Meezan Financial Planning Fund of Funds (Aggressive)', 'Meezan FP Fund of Funds (Aggressive)')
-        .replaceAll('Meezan Dynamic Asset Allocation Fund (Meezan Dividend Yield Plan)', 'Meezan Dynamic Asset Allocation Fund')
-        .replaceAll('Meezan Daily Income Fund (Meezan Mahana Munafa Plan)', 'Meezan Mahana Munafa Plan')
-        .replaceAll('Meezan Daily Income Fund (Meezan Munafa Plan I)', 'Meezan Munafa Plan I')
-        .replaceAll('Meezan Daily Income Fund (Meezan Sehl Account Plan) (MSHP)', 'Meezan Sehl Account Plan')
-        .replaceAll('Meezan Daily Income Fund (Meezan Super Saver Plan) (MSSP)', 'Meezan Super Saver Plan')
-        .replaceAll('ABL Islamic Financial Planning Fund (Conservative Allocation Plan)', 'ABL Islamic FP Fund (Conservative)')
-        .replaceAll('ABL Financial Planning Fund (Strategic Allocation Plan)', 'ABL FP Fund (Strategic Allocation Plan)')
-        .replaceAll('ABL Financial Planning Fund (Conservative Plan)', 'ABL Islamic FP Fund (Conservative)')
-        .replaceAll('ABL Islamic Financial Planning Fund (Active Allocation Plan)', 'ABL Islamic FP Fund (Active)')
-        .replaceAll('ABL Islamic Financial Planning Fund (Capital Preservation Plan I)', 'ABL Islamic FP Fund (Capital Preservation Plan I)')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan I)', 'ABL Special Saving Plan I')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan II)', 'ABL Special Saving Plan II')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan III)', 'ABL Special Saving Plan III')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan IV)', 'ABL Special Saving Plan IV')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan V)', 'ABL Special Saving Plan V')
-        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan VI)', 'ABL Special Saving Plan VI')
-        .replaceAll('Government', 'Govt.') 
-        .trim();
-  }
-
   @override
   void initState() {
     super.initState();
     _selectedPeriod = '1Y';
     
+    // 1. USE THE SHORT CATEGORY FROM THE DASHBOARD
     final Set<String> catSet = {};
     for (var f in widget.allFunds) {
-      final cat = f['category'];
+      final cat = f['short_category'] ?? f['category'];
       if (cat != null && cat.toString().isNotEmpty) catSet.add(cat.toString().trim());
     }
     _categories = catSet.toList()..sort();
@@ -125,7 +62,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
   }
 
   // --- THE OVERLAP ELIGIBILITY ENGINE ---
-  // Silently checks if we have exactly 2 funds, and if both exist in the DB
   Future<void> _checkOverlapEligibility() async {
     final validTickers = _selectedFundTickers.where((t) => t != null).toList();
     
@@ -139,7 +75,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
 
     try {
       final supabase = Supabase.instance.client;
-      // Fast check: Do we have at least 1 holding row for both tickers?
       final res1 = await supabase.from('fund_holdings').select('fund_ticker').eq('fund_ticker', t1).limit(1);
       final res2 = await supabase.from('fund_holdings').select('fund_ticker').eq('fund_ticker', t2).limit(1);
 
@@ -153,7 +88,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     }
   }
 
-  // --- THE OVERLAP MATH ENGINE (EQUITIES ONLY) ---
+  // --- THE OVERLAP MATH ENGINE ---
   Future<void> _loadOverlapData() async {
     if (!mounted) return;
     setState(() => _isLoadingOverlap = true);
@@ -165,39 +100,33 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     try {
       final supabase = Supabase.instance.client;
 
-      // 1. Get the latest reporting dates for both funds
       final d1Res = await supabase.from('fund_holdings').select('fmr_date').eq('fund_ticker', t1).order('fmr_date', ascending: false).limit(1);
       final d2Res = await supabase.from('fund_holdings').select('fmr_date').eq('fund_ticker', t2).order('fmr_date', ascending: false).limit(1);
 
       String date1 = d1Res.first['fmr_date'].toString().substring(0, 10);
       String date2 = d2Res.first['fmr_date'].toString().substring(0, 10);
 
-      // 2. Pull all holdings for those specific dates
       final h1Res = await supabase.from('fund_holdings').select('stock_ticker, holding_percentage').eq('fund_ticker', t1).eq('fmr_date', date1);
       final h2Res = await supabase.from('fund_holdings').select('stock_ticker, holding_percentage').eq('fund_ticker', t2).eq('fmr_date', date2);
 
-      // 3. Map Fund 1 for ultra-fast lookup
       Map<String, double> fund1Map = {};
       for (var h in h1Res) {
         fund1Map[h['stock_ticker'].toString().trim()] = double.tryParse(h['holding_percentage'].toString()) ?? 0.0;
       }
 
-      // 4. The Math: Find the Minimum Intersection (Ignoring Cash/Others)
       double totalOverlap = 0.0;
       List<Map<String, dynamic>> sharedDetails = [];
       List<String> sharedTickers = [];
 
       for (var h in h2Res) {
         String ticker = h['stock_ticker'].toString().trim();
-        
-        // --- THE FIX: Skip non-equity buckets entirely ---
         if (ticker == 'CASH' || ticker == 'OTHER') continue;
 
         double p2 = double.tryParse(h['holding_percentage'].toString()) ?? 0.0;
         
         if (fund1Map.containsKey(ticker)) {
           double p1 = fund1Map[ticker]!;
-          double intersection = math.min(p1, p2); // E.g. Fund A: 10%, Fund B: 7% -> Overlap: 7%
+          double intersection = math.min(p1, p2); 
           
           if (intersection > 0) {
             totalOverlap += intersection;
@@ -212,7 +141,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
         }
       }
 
-      // 5. Fetch beautiful company names
       if (sharedTickers.isNotEmpty) {
         final stocksResponse = await supabase.from('master_stocks').select('ticker, company_name').inFilter('ticker', sharedTickers);
         for (var detail in sharedDetails) {
@@ -224,7 +152,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
         }
       }
 
-      // Sort by highest overlap first
       sharedDetails.sort((a, b) => (b['overlap'] as double).compareTo(a['overlap'] as double));
 
       if (mounted) {
@@ -251,7 +178,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     try {
       final supabase = Supabase.instance.client;
       DateTime startDate = DateTime.now();
-      bool isMax = false;
       
       switch (_selectedPeriod) {
         case '30D': startDate = DateTime.now().subtract(const Duration(days: 30)); break;
@@ -260,7 +186,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
         case '5Y': startDate = DateTime.now().subtract(const Duration(days: 1825)); break;
         case '10Y': startDate = DateTime.now().subtract(const Duration(days: 3650)); break;
         case '15Y': startDate = DateTime.now().subtract(const Duration(days: 5475)); break;
-        case 'MAX': startDate = DateTime(2000, 1, 1); isMax = true; break;
+        case 'MAX': startDate = DateTime(2000, 1, 1); break;
         default: startDate = DateTime.now().subtract(const Duration(days: 365));
       }
       final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
@@ -268,7 +194,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
       List<List<dynamic>> allFundData = [];
       List<List<dynamic>> allPayoutData = [];
 
-      // 1. Fetch all data concurrently
       List<Future> futures = [];
       for (String ticker in validTickers) {
         futures.add(supabase.from('daily_nav').select('validity_date, nav').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true));
@@ -281,7 +206,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
         allPayoutData.add(List.from(responses[(i * 2) + 1] as List<dynamic>));
       }
 
-      // 2. THE COMMON DENOMINATOR FIX (Now applies to all periods)
       List<DateTime> startDates = [];
       for (var data in allFundData) {
         if (data.isNotEmpty) startDates.add(DateTime.parse(data.first['validity_date'].toString()));
@@ -294,7 +218,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
         }
       }
 
-      // 3. Base-100 Calculation
       Map<String, List<FlSpot>> newSpots = {};
       double localMinX = 9999999999999;
       double localMaxX = 0;
@@ -358,26 +281,21 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     }
   }
 
-  // --- OVERLAP UI WIDGET (TEAL THEME) ---
   Widget _buildOverlapAnalyzer() {
     if (!_showOverlapButton) return const SizedBox.shrink();
 
     if (!_isOverlapExpanded) {
       return Center(
         child: OutlinedButton.icon(
-          // Changed to tealAccent
           icon: const Icon(Icons.pie_chart_outline, color: Colors.purpleAccent, size: 25),
           label: const Text('✨ Overlap Analyzer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            // Changed to tealAccent
             side: BorderSide(color: Colors.purpleAccent.withOpacity(0.5)),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-            // Changed to tealAccent
             backgroundColor: Colors.purpleAccent.withOpacity(0.05)
           ),
           onPressed: () {
-            // Future Paywall Hook goes here!
             setState(() { _isOverlapExpanded = true; });
             _loadOverlapData();
           },
@@ -390,7 +308,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(20),
-      // Changed to tealAccent
       decoration: BoxDecoration(color: Colors.white.withOpacity(0.02), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.purpleAccent.withOpacity(0.3))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,16 +326,13 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
           const SizedBox(height: 16),
           
           if (_isLoadingOverlap)
-            // Changed to tealAccent
             const SizedBox(height: 100, child: Center(child: CircularProgressIndicator(color: Colors.purpleAccent)))
           else if (_overlappingStocks.isEmpty)
             const SizedBox(height: 100, child: Center(child: Text('These funds are perfectly diversified.\nThey share 0 assets.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))))
           else ...[
-            // Total Overlap Header
             Center(
               child: Column(
                 children: [
-                  // Changed to tealAccent
                   Text('${_totalOverlapPercentage.toStringAsFixed(1)}%', style: const TextStyle(color: Colors.purpleAccent, fontSize: 48, fontWeight: FontWeight.w800, height: 1.0)),
                   const SizedBox(height: 4),
                   const Text('Total Shared Assets', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
@@ -429,7 +343,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
             const Text('Top Shared Holdings:', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             
-            // Shared Holdings Breakdown
             ..._overlappingStocks.take(5).map((stock) {
               double currentOverlap = stock['overlap'] as double;
               double barWidthFactor = maxOverlap > 0 ? (currentOverlap / maxOverlap) : 0.0;
@@ -450,13 +363,11 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                             child: FractionallySizedBox(
                               alignment: Alignment.centerLeft, 
                               widthFactor: barWidthFactor, 
-                              // Changed to tealAccent
                               child: Container(decoration: BoxDecoration(color: Colors.purpleAccent.withOpacity(0.8), borderRadius: BorderRadius.circular(3))),
                             ),
                           ),
                         ),
                         const SizedBox(width: 12),
-                        // Changed to tealAccent
                         Text('${currentOverlap.toStringAsFixed(1)}% overlap', style: const TextStyle(color: Colors.purpleAccent, fontSize: 11, fontWeight: FontWeight.bold)),
                       ],
                     )
@@ -470,7 +381,6 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     );
   }
 
-  // --- THE NEW COMPARISON CHART WIDGET ---
   Widget _buildComparisonChart() {
     final validTickers = _selectedFundTickers.where((t) => t != null).cast<String>().toList();
     if (validTickers.isEmpty) return const SizedBox.shrink();
@@ -495,14 +405,16 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Legend
           Wrap(
             spacing: 12, runSpacing: 8,
             children: validTickers.asMap().entries.map((entry) {
               int idx = entry.key;
               String ticker = entry.value;
               final fundData = widget.allFunds.firstWhere((f) => f['ticker'] == ticker, orElse: () => {});
-              String name = _cleanFundName(fundData['fund_name']?.toString() ?? ticker);
+              
+              // 2. USE DASHBOARD'S SHORT NAME
+              String name = fundData['short_name']?.toString() ?? fundData['fund_name']?.toString() ?? ticker;
+              
               return Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -550,7 +462,9 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                               DateTime date = DateTime.fromMillisecondsSinceEpoch(spot.x.toInt());
                               String ticker = validTickers[spot.barIndex];
                               final fundData = widget.allFunds.firstWhere((f) => f['ticker'] == ticker, orElse: () => {});
-                              String name = _cleanFundName(fundData['fund_name']?.toString() ?? ticker);
+                              
+                              // 3. USE DASHBOARD'S SHORT NAME
+                              String name = fundData['short_name']?.toString() ?? fundData['fund_name']?.toString() ?? ticker;
                               
                               return LineTooltipItem('${DateFormat('dd MMM yyyy').format(date)}\n$name\n${spot.y.toStringAsFixed(1)}', TextStyle(color: _chartColors[spot.barIndex % _chartColors.length], fontSize: 10, fontWeight: FontWeight.bold));
                             }).toList();
@@ -566,7 +480,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                           color: _chartColors[idx % _chartColors.length],
                           barWidth: 2,
                           isStrokeCapRound: true,
-                          dotData: const FlDotData(show: false), // SOLID LINES
+                          dotData: const FlDotData(show: false),
                         );
                       }).toList(),
                     ),
@@ -577,9 +491,10 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     );
   }
 
+  // 4. FILTER BY SHORT CATEGORY
   List<Map<String, dynamic>> _getFundsInCategory() {
     if (_selectedCategory == null) return [];
-    return widget.allFunds.where((f) => f['category']?.toString().trim() == _selectedCategory).toList();
+    return widget.allFunds.where((f) => (f['short_category'] ?? f['category'])?.toString().trim() == _selectedCategory).toList();
   }
 
   String _getSortKey(String period) {
@@ -596,7 +511,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
     return GestureDetector(
       onTap: () {
         setState(() => _selectedPeriod = label);
-        if (_isChartExpanded) _loadComparisonChartData(); // Reload chart on filter change
+        if (_isChartExpanded) _loadComparisonChartData();
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -628,7 +543,8 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
   }
 
   Widget _buildComparisonCard(Map<String, dynamic> fund) {
-    final fundName = _cleanFundName(fund['fund_name'] ?? 'Unknown Fund');
+    // 5. USE DASHBOARD'S SHORT NAME
+    final fundName = fund['short_name']?.toString() ?? fund['fund_name']?.toString() ?? 'Unknown Fund';
     final amcName = fund['amc_name'] ?? '';
     final isShariah = (fund['is_shariah'] == 1 || fund['is_shariah'] == '1' || fund['is_shariah'] == true);
     
@@ -760,7 +676,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                               _selectedCategory = val;
                               _selectedFundTickers = [null, null];
                             });
-                            _checkOverlapEligibility(); // Trigger Check
+                            _checkOverlapEligibility();
                           }
                         },
                       ),
@@ -784,10 +700,16 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                                 value: _selectedFundTickers[index], isExpanded: true, dropdownColor: const Color(0xFF203A43), menuMaxHeight: 350, icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
                                 style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                                 hint: const Text('Choose a fund...', style: TextStyle(color: Colors.white38)),
-                                items: availableFunds.map((f) => DropdownMenuItem(value: f['ticker'] as String, child: Text(_cleanFundName(f['fund_name'] as String), overflow: TextOverflow.ellipsis))).toList(),
+                                
+                                // 6. USE DASHBOARD'S SHORT NAME IN DROPDOWN
+                                items: availableFunds.map((f) => DropdownMenuItem(
+                                  value: f['ticker'] as String, 
+                                  child: Text((f['short_name'] ?? f['fund_name']).toString(), overflow: TextOverflow.ellipsis)
+                                )).toList(),
+                                
                                 onChanged: (val) { 
                                   setState(() { _selectedFundTickers[index] = val; }); 
-                                  _checkOverlapEligibility(); // Trigger Check
+                                  _checkOverlapEligibility();
                                 },
                               ),
                             ),
@@ -797,7 +719,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                               icon: const Icon(Icons.close, color: Colors.redAccent, size: 20),
                               onPressed: () { 
                                 setState(() { _selectedFundTickers.removeAt(index); }); 
-                                _checkOverlapEligibility(); // Trigger Check
+                                _checkOverlapEligibility();
                               },
                             )
                         ],
@@ -810,7 +732,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                       child: TextButton.icon(
                         onPressed: () { 
                           setState(() { _selectedFundTickers.add(null); }); 
-                          _checkOverlapEligibility(); // Trigger Check
+                          _checkOverlapEligibility();
                         },
                         icon: const Icon(Icons.add_circle_outline, color: Colors.tealAccent),
                         label: const Text('Add Another Fund', style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.w600)),
@@ -830,11 +752,9 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // --- THE OVERLAP ANALYZER WIDGET ---
                   _buildOverlapAnalyzer(),
                   const SizedBox(height: 8),
 
-                  // --- THE NEW CHART BUTTON ---
                   if (!_isChartExpanded && _selectedFundTickers.where((t) => t != null).isNotEmpty)
                     Center(
                       child: OutlinedButton.icon(

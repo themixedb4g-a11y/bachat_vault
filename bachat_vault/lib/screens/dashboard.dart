@@ -212,8 +212,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           'Faysal Islamic Sovereign Plan II',
         )
         .replaceAll(
-          'Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)',
-          'Faysal Nuumah Women Savers Plan',
+          "Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)",
+          "Faysal Nu'umah Women Savers Plan",
         )
         .replaceAll(
           'Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)',
@@ -228,8 +228,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           'Faysal Priority Ascend Plan III',
         )
         .replaceAll(
-          'Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)',
-          'Faysal Barakaah Women Savers Plan',
+          "Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)",
+          "Faysal Barak'ah Women Savers Plan",
         )
         .replaceAll(
           'Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)',
@@ -442,6 +442,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           ...mf, // <-- This brings in the ORIGINAL long names so the Individual Page can use them!
           
           // --- THE TWO-KEY INJECTIONS (Short Names for the UI) ---
+          'amc_name': amcMap[rawAmc] ?? rawAmc,
           'short_category': categoryMap[rawCat] ?? rawCat,
           'short_amc_name': amcMap[rawAmc] ?? rawAmc,
           'short_name': _cleanFundName(rawName),
