@@ -108,10 +108,12 @@ def filter_protected_entries(batch, table_name):
             existing_source = existing_map.get(key, "")
             incoming_source = item.get("source") or ""
 
-            if "Manual" in existing_source:
+            # 1. Manual is God Mode. Nothing can overwrite it.
+            if existing_source == "Manual":
                 continue
 
-            if incoming_source == "MUFAP" and "AMC_Website" in existing_source:
+            # 2. MUFAP is the safety net. It can never overwrite AMC_Website.
+            if incoming_source == "MUFAP" and existing_source == "AMC_Website":
                 continue
 
             filtered_batch.append(item)
@@ -428,10 +430,9 @@ def sync_mufap_master():
         ):
             psx_exclusive_etfs.add(ticker)
 
-    amc_direct_tickers = {
-        row["ticker"] for row in master_res.data if row.get("amc_website_name")
-    }
-    excluded_tickers = psx_exclusive_etfs.union(amc_direct_tickers)
+    # THE FIX: We removed the `amc_direct_tickers` ban.
+    # MUFAP now acts as a safety net for ALL funds.
+    excluded_tickers = psx_exclusive_etfs
 
     target_ids = {
         str(int(float(row["fund_id_mufap"])))
