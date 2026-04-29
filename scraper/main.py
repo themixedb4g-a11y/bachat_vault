@@ -85,26 +85,26 @@ def is_valid_date(date_str, ticker):
 
 
 # --- THE FINAL BOSS HIERARCHY ---
-def filter_protected_entries(batch, table_name):
+def filter_protected_entries(batch, table_name, date_col="validity_date"):
     if not batch:
         return []
     try:
-        dates = list(set([item["validity_date"] for item in batch]))
+        dates = list(set([item[date_col] for item in batch]))
 
         res = (
             supabase.table(table_name)
-            .select("ticker, validity_date, source")
-            .in_("validity_date", dates)
+            .select(f"ticker, {date_col}, source")
+            .in_(date_col, dates)
             .execute()
         )
 
         existing_map = {
-            (r["ticker"], r["validity_date"]): (r.get("source") or "") for r in res.data
+            (r["ticker"], r[date_col]): (r.get("source") or "") for r in res.data
         }
 
         filtered_batch = []
         for item in batch:
-            key = (item["ticker"], item["validity_date"])
+            key = (item["ticker"], item[date_col])
             existing_source = existing_map.get(key, "")
             incoming_source = item.get("source") or ""
 
@@ -130,8 +130,13 @@ def filter_protected_entries(batch, table_name):
         return batch
 
 
-# --- TASK A: PSX INDICES (UPDATED FOR LDCP) ---
+# --- TASK A: PSX INDICES (UPDATED FOR LDCP & EOD TIMING) ---
 def sync_psx_indices():
+    now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
+    if 8 <= now_pk.hour < 17:
+        print("📈 Skipping PSX Indices (EOD) - Market is open.")
+        return
+
     print("📈 Syncing PSX Indices...")
     try:
         response = session.get("https://dps.psx.com.pk", timeout=15)
@@ -385,6 +390,11 @@ def fetch_etf(ticker):
 
 
 def sync_psx_etfs():
+    now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
+    if 8 <= now_pk.hour < 17:
+        print("📊 Skipping PSX ETFs (EOD) - Market is open.")
+        return
+
     print("📊 Syncing ETFs from PSX...")
     psx_etf_tickers = []
     for ticker, category in FUND_CATEGORY_MAP.items():
@@ -896,6 +906,7 @@ def sync_mufap_payouts():
                                 "payout_date": dt_str,
                                 "payout_amount": payout_amount,
                                 "ex_nav": ex_nav,
+                                "source": "MUFAP",  # ADDED FOR HIERARCHY
                             }
                         )
                     except:
@@ -905,10 +916,18 @@ def sync_mufap_payouts():
             unique_batch = {
                 (item["ticker"], item["payout_date"]): item for item in batch
             }
-            supabase.table("payout_history").upsert(
-                list(unique_batch.values()), on_conflict="ticker,payout_date"
-            ).execute()
-            print(f"   ✅ {len(unique_batch)} Payouts synced.")
+            final_batch = list(unique_batch.values())
+
+            # Use the updated filter to protect MANUAL entries based on payout_date
+            safe_batch = filter_protected_entries(
+                final_batch, "payout_history", date_col="payout_date"
+            )
+
+            if safe_batch:
+                supabase.table("payout_history").upsert(
+                    safe_batch, on_conflict="ticker,payout_date"
+                ).execute()
+                print(f"   ✅ {len(safe_batch)} Payouts synced (Manual protected).")
     except Exception as e:
         print(f"   ❌ Payouts Error: {e}")
 

@@ -1,6 +1,7 @@
 import os
 import requests
 from bs4 import BeautifulSoup
+from lxml import html  # <-- Added to support the Index XPath scraping
 import re
 from supabase import create_client
 from datetime import datetime
@@ -46,7 +47,69 @@ def to_float(val_str):
         return 0.0
 
 
-# --- 3. THE CORE SCRAPER ---
+# --- 3. LIVE INDICES SCRAPER (NEW) ---
+def sync_live_indices():
+    """Scrapes KSE100 and KMI30 values and pushes them to live_stock_prices."""
+    print("📈 Syncing Live PSX Indices (KSE100 & KMI30)...")
+    try:
+        response = session.get("https://dps.psx.com.pk", timeout=15)
+        tree = html.fromstring(response.content)
+
+        # Grab all stats blocks for LDCP mapping
+        stats_elements = tree.xpath("//div[@class='stats_value']")
+
+        batch = []
+        for ticker, xp_idx in [("KSE100", 1), ("KMI30", 5)]:
+            val_result = tree.xpath(f"//*[@id='indicesTabs']/div[2]/div[{xp_idx}]/h1")
+
+            if val_result:
+                current_val = float(
+                    val_result[0].text_content().strip().replace(",", "").split(" ")[0]
+                )
+
+                # Extract LDCP
+                ldcp_val = 0.0
+                try:
+                    if ticker == "KSE100" and len(stats_elements) > 3:
+                        ldcp_text = (
+                            stats_elements[3].text_content().strip().replace(",", "")
+                        )
+                        ldcp_val = float(re.search(r"[\d\.]+", ldcp_text).group())
+                    elif ticker == "KMI30" and len(stats_elements) > 27:
+                        ldcp_text = (
+                            stats_elements[27].text_content().strip().replace(",", "")
+                        )
+                        ldcp_val = float(re.search(r"[\d\.]+", ldcp_text).group())
+                except Exception as e:
+                    pass
+
+                # Calculate live change metrics for the live_stock_prices table
+                change = current_val - ldcp_val
+                change_pct = (change / ldcp_val * 100) if ldcp_val > 0 else 0.0
+
+                batch.append(
+                    {
+                        "ticker": ticker,
+                        "current_price": current_val,
+                        "ldcp": ldcp_val,
+                        "change": change,
+                        "change_percent": change_pct,
+                        "last_updated": datetime.now(
+                            pytz.timezone("Asia/Karachi")
+                        ).isoformat(),
+                    }
+                )
+
+        if batch:
+            supabase.table("live_stock_prices").upsert(
+                batch, on_conflict="ticker"
+            ).execute()
+            print(f"   ✅ Live Indices updated in live_stock_prices.")
+    except Exception as e:
+        print(f"   ❌ Live Indices Error: {e}")
+
+
+# --- 4. THE CORE SCRAPER (STOCKS & ETFS) ---
 def sync_live_markets():
     print("📈 Initiating Live Market Scrape...")
 
@@ -71,14 +134,14 @@ def sync_live_markets():
 
     for index_name, url, weight_col in indices:
         try:
-            print(f"   -> Fetching {index_name}...")
+            print(f"   -> Fetching {index_name} Components...")
             response = session.get(url, timeout=15)
             soup = BeautifulSoup(response.content, "lxml")
 
             # Find the first table on the page
             table = soup.find("table")
             if not table:
-                print(f"   ⚠️ Could not find table for {index_name}")
+                print(f"   ⚠️ Could not find table for {index_name}")
                 continue
 
             # Dynamically map the columns based on headers so it never breaks if PSX changes the layout
@@ -184,9 +247,9 @@ def sync_live_markets():
                     master_stocks_dict[base_ticker][weight_col] = weight
 
         except Exception as e:
-            print(f"   ❌ Error scraping {index_name}: {e}")
+            print(f"   ❌ Error scraping {index_name}: {e}")
 
-    # --- 4. DATABASE UPSERT ---
+    # --- DATABASE UPSERT ---
     # SMART FILTER: Only keep the stocks that actually exist in your master_stocks table
     final_batch = [
         data for ticker, data in master_stocks_dict.items() if ticker in valid_tickers
@@ -202,7 +265,7 @@ def sync_live_markets():
                     chunk, on_conflict="ticker"
                 ).execute()
             print(
-                f"✅ Successfully synced {len(final_batch)} total unique stocks to database."
+                f"✅ Successfully synced {len(final_batch)} total unique stocks/ETFs to database."
             )
         except Exception as e:
             print(f"❌ Supabase Upsert Error: {e}")
@@ -216,6 +279,10 @@ def run_live_market(request):
     """HTTP Cloud Function to trigger the live stock scraper."""
     start_time = datetime.now()
 
+    # Trigger the newly added index scraper first
+    sync_live_indices()
+
+    # Then trigger the main stock/ETF scraper loop
     sync_live_markets()
 
     total_time = datetime.now() - start_time
