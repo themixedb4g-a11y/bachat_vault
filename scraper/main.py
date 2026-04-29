@@ -335,7 +335,7 @@ def sync_international_gold():
         print(f"   ❌ International Gold Error: {e}")
 
 
-# --- TASK C: PSX ETFs (UPDATED FOR DUAL-WRITE & LDCP) ---
+# --- TASK C: PSX ETFs (UPDATED WITH BULLETPROOF LDCP LOGIC) ---
 def fetch_etf(ticker):
     try:
         soup = BeautifulSoup(
@@ -347,14 +347,18 @@ def fetch_etf(ticker):
             re.findall(r"\d+\.\d+", soup.find("div", class_="quote__price").text)[0]
         )
 
-        # 2. Grab LDCP (from the first stats_value element, mirroring index 1 in Google Sheets)
+        # 2. Grab LDCP (Safely finding it by its label, preventing the 'OPEN' price bug)
         ldcp = None
-        stats_divs = soup.find_all("div", class_="stats_value")
-        if stats_divs:
-            ldcp_text = stats_divs[0].text.replace(",", "").strip()
-            ldcp_match = re.search(r"[\d\.]+", ldcp_text)
-            if ldcp_match:
-                ldcp = float(ldcp_match.group())
+        stats_items = soup.find_all("div", class_="stats_item")
+        for item in stats_items:
+            label_div = item.find("div", class_="stats_label")
+            if label_div and "LDCP" in label_div.text.upper():
+                val_div = item.find("div", class_="stats_value")
+                if val_div:
+                    ldcp_match = re.search(r"[\d\.]+", val_div.text.replace(",", ""))
+                    if ldcp_match:
+                        ldcp = float(ldcp_match.group())
+                break
 
         # 3. Grab Date
         date_match = re.search(
@@ -364,24 +368,13 @@ def fetch_etf(ticker):
         web_date = datetime.strptime(date_match, "%b %d, %Y").strftime("%Y-%m-%d")
 
         if is_valid_date(web_date, ticker):
+            # Strictly returning daily_nav format only (No dual-write)
             return {
-                # Payload for daily_nav (Historical Charts)
-                "daily_nav": {
-                    "ticker": ticker,
-                    "nav": price,
-                    "ldcp": ldcp,
-                    "validity_date": web_date,
-                    "source": "PSX",
-                },
-                # Payload for live_stock_prices (Portfolio Tracker)
-                "live_stock": {
-                    "ticker": ticker,
-                    "current_price": price,
-                    "ldcp": ldcp,
-                    "last_updated": datetime.now(
-                        pytz.timezone("Asia/Karachi")
-                    ).isoformat(),
-                },
+                "ticker": ticker,
+                "nav": price,
+                "ldcp": ldcp,
+                "validity_date": web_date,
+                "source": "PSX",
             }
         return None
     except Exception as e:
@@ -391,6 +384,8 @@ def fetch_etf(ticker):
 
 def sync_psx_etfs():
     now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
+
+    # EOD Timing Guardrail: Skip during market hours
     if 8 <= now_pk.hour < 17:
         print("📊 Skipping PSX ETFs (EOD) - Market is open.")
         return
@@ -404,29 +399,17 @@ def sync_psx_etfs():
                 psx_etf_tickers.append(ticker)
 
     with ThreadPoolExecutor(max_workers=8) as executor:
+        # Results is now a clean, single list of dictionaries for daily_nav
         results = list(filter(None, executor.map(fetch_etf, psx_etf_tickers)))
 
     if results:
-        # Separate the dual-payloads
-        daily_nav_batch = [res["daily_nav"] for res in results]
-        live_stock_batch = [res["live_stock"] for res in results]
-
-        # 1. Write to daily_nav
-        safe_batch = filter_protected_entries(daily_nav_batch, "daily_nav")
+        # Write only to daily_nav
+        safe_batch = filter_protected_entries(results, "daily_nav")
         if safe_batch:
             supabase.table("daily_nav").upsert(
                 safe_batch, on_conflict="ticker,validity_date"
             ).execute()
             print(f"   ✅ {len(safe_batch)} ETFs historically updated (daily_nav).")
-
-        # 2. Dual-Write to live_stock_prices
-        if live_stock_batch:
-            supabase.table("live_stock_prices").upsert(
-                live_stock_batch, on_conflict="ticker"
-            ).execute()
-            print(
-                f"   ✅ {len(live_stock_batch)} ETFs live snapshot updated (live_stock_prices)."
-            )
 
 
 # --- TASK D: TARGETED MUFAP ---
