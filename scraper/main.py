@@ -412,9 +412,9 @@ def sync_psx_etfs():
             print(f"   ✅ {len(safe_batch)} ETFs historically updated (daily_nav).")
 
 
-# --- TASK D: TARGETED MUFAP ---
+# --- TASK D: TARGETED MUFAP (UPDATED FOR 3-DAY ROLLING WINDOW) ---
 def sync_mufap_master():
-    print("🏛️ Syncing MUFAP (Targeted)...")
+    print("🏛️ Syncing MUFAP (Targeted 3-Day Rolling)...")
     psx_exclusive_etfs = set()
     for ticker, category in FUND_CATEGORY_MAP.items():
         if (
@@ -438,13 +438,20 @@ def sync_mufap_master():
         if row.get("fund_id_mufap") and row["ticker"] not in excluded_tickers
     }
 
+    # --- 3-DAY ROLLING URL LOGIC ---
+    now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
+    datetill = now_pk.strftime("%Y-%m-%d")
+    datefrom = (now_pk - timedelta(days=3)).strftime("%Y-%m-%d")
+
+    mufap_url = f"https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=3&AMCId=null&fundId=null&datefrom={datefrom}&datetill={datetill}"
+
     batch = []
     try:
         soup = BeautifulSoup(
             session.get(
-                "https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=3",
+                mufap_url,
                 verify=False,
-                timeout=15,
+                timeout=25,  # Increased timeout to handle the larger 3-day payload
             ).text,
             "lxml",
         )
@@ -461,6 +468,16 @@ def sync_mufap_master():
                         dt_str = datetime.strptime(
                             cells[8].text.strip().title(), "%b %d, %Y"
                         ).strftime("%Y-%m-%d")
+
+                        # --- ENFORCING RULE 1 (Annualized Funds Only) ---
+                        # If the fund is Absolute, skip rows older than 1 day to mimic standard daily scrape behavior.
+                        ticker_logic = FUND_LOGIC_MAP.get(ticker, "Absolute")
+                        if ticker_logic != "Annualized":
+                            parsed_date = datetime.strptime(dt_str, "%Y-%m-%d").date()
+                            days_diff = (now_pk.date() - parsed_date).days
+                            if days_diff > 1:
+                                continue
+
                         if is_valid_date(dt_str, ticker):
                             batch.append(
                                 {
@@ -472,13 +489,15 @@ def sync_mufap_master():
                             )
                     except:
                         continue
+
         if batch:
+            # Passes through rule #3 (Hierarchy) flawlessly
             safe_batch = filter_protected_entries(batch, "daily_nav")
             if safe_batch:
                 supabase.table("daily_nav").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
                 ).execute()
-            print(f"   ✅ {len(batch)} MUFAP funds updated.")
+            print(f"   ✅ {len(batch)} MUFAP fund records updated (3-Day Rolling).")
     except Exception as e:
         print(f"   ❌ MUFAP Error: {e}")
 
