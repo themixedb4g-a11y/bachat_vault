@@ -9,6 +9,7 @@ import pytz
 import urllib3
 import sys
 import functions_framework
+from concurrent.futures import ThreadPoolExecutor  # <-- Added for ETF fetching
 
 session = requests.Session()
 session.headers.update(
@@ -19,6 +20,7 @@ session.headers.update(
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# --- 1. CONNECTION ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
@@ -28,12 +30,15 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
+# --- 2. HELPERS ---
 def clean_ticker(raw_ticker):
+    """Strips XD, XB, XR from the end of the ticker for clean Foreign Key linking."""
     ticker = raw_ticker.strip().upper()
     return re.sub(r"(XD|XB|XR)+$", "", ticker)
 
 
 def to_float(val_str):
+    """Safely converts messy web strings to floats."""
     if not val_str or str(val_str).strip() in ["-", "", "N/A"]:
         return 0.0
     clean_str = str(val_str).replace(",", "").replace("%", "").strip()
@@ -43,7 +48,7 @@ def to_float(val_str):
         return 0.0
 
 
-# --- LIVE INDICES SCRAPER ---
+# --- 3. LIVE INDICES SCRAPER ---
 def sync_live_indices():
     print("📈 Syncing Live PSX Indices (KSE100 & KMI30)...")
     try:
@@ -101,9 +106,78 @@ def sync_live_indices():
         print(f"   ❌ Live Indices Error: {e}")
 
 
-# --- THE CORE STOCK/ETF SCRAPER ---
+# --- 4. LIVE ETF SCRAPER (RESTORED WITH LABEL-MATCHING LOGIC) ---
+def fetch_live_etf(ticker):
+    try:
+        soup = BeautifulSoup(
+            session.get(f"https://dps.psx.com.pk/etf/{ticker}", timeout=10).text, "lxml"
+        )
+
+        # 1. Grab Live Price
+        price = float(
+            re.findall(r"\d+\.\d+", soup.find("div", class_="quote__price").text)[0]
+        )
+
+        # 2. Grab LDCP (Safely finding it by its label, preventing the 'OPEN' price bug)
+        ldcp = 0.0
+        stats_items = soup.find_all("div", class_="stats_item")
+        for item in stats_items:
+            label_div = item.find("div", class_="stats_label")
+            if label_div and "LDCP" in label_div.text.upper():
+                val_div = item.find("div", class_="stats_value")
+                if val_div:
+                    ldcp_match = re.search(r"[\d\.]+", val_div.text.replace(",", ""))
+                    if ldcp_match:
+                        ldcp = float(ldcp_match.group())
+                break
+
+        change = price - ldcp
+        change_pct = (change / ldcp * 100) if ldcp > 0 else 0.0
+
+        return {
+            "ticker": ticker,
+            "current_price": price,
+            "ldcp": ldcp,
+            "change": change,
+            "change_percent": change_pct,
+            "last_updated": datetime.now(pytz.timezone("Asia/Karachi")).isoformat(),
+        }
+    except Exception as e:
+        return None
+
+
+def sync_live_etfs():
+    print("📊 Syncing Live ETFs...")
+    try:
+        res = (
+            supabase.table("master_funds")
+            .select("ticker, category, return_logic")
+            .execute()
+        )
+        etf_tickers = [
+            row["ticker"]
+            for row in res.data
+            if "Exchange Traded Fund" in str(row.get("category"))
+            and row.get("return_logic") != "Annualized"
+            and row["ticker"] != "HBLTETF"
+        ]
+    except Exception as e:
+        print(f"❌ Error fetching ETF tickers: {e}")
+        return
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        batch = list(filter(None, executor.map(fetch_live_etf, etf_tickers)))
+
+    if batch:
+        supabase.table("live_stock_prices").upsert(
+            batch, on_conflict="ticker"
+        ).execute()
+        print(f"   ✅ {len(batch)} Live ETFs updated.")
+
+
+# --- 5. THE CORE STOCK SCRAPER ---
 def sync_live_markets():
-    print("📈 Initiating Live Market Scrape (Stocks & ETFs)...")
+    print("📈 Initiating Live Market Scrape (Stocks)...")
 
     try:
         master_res = supabase.table("master_stocks").select("ticker").execute()
@@ -245,17 +319,21 @@ def sync_live_markets():
                     chunk, on_conflict="ticker"
                 ).execute()
             print(
-                f"✅ Successfully synced {len(final_batch)} total unique stocks/ETFs to database."
+                f"✅ Successfully synced {len(final_batch)} total unique stocks to database."
             )
         except Exception as e:
             print(f"❌ Supabase Upsert Error: {e}")
 
 
+# ==========================================
+# Google Cloud Function Entry Point
+# ==========================================
 @functions_framework.http
 def run_live_market(request):
     start_time = datetime.now()
 
     sync_live_indices()
+    sync_live_etfs()  # <-- Calling the restored ETF function
     sync_live_markets()
 
     total_time = datetime.now() - start_time
