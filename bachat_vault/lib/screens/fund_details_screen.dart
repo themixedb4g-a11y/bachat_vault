@@ -53,7 +53,7 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadChartData(); // Added this so the 1Y chart loads automatically!
+    _loadChartData(); 
     _loadHoldingsData();
   }
 
@@ -68,7 +68,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       final bool isShariah = (widget.fund['is_shariah'] == 1 || widget.fund['is_shariah'] == '1' || widget.fund['is_shariah'] == true);
       final String indexTicker = isShariah ? 'KMI30' : 'KSE100';
       
-      // FIX 1: Added USDPKR to the benchmark array so it fetches from the benchmarks table
       final bool isBenchmark = ['KSE100', 'KMI30', 'GOLD_24K', 'CPI_PK', 'USDPKR'].contains(ticker);
 
       DateTime startDate = DateTime.now();
@@ -96,7 +95,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
 
       final responses = await Future.wait([fundFuture, payoutFuture, indexFuture, goldFuture]);
       
-      // We wrap these in List.from() so they are mutable (we can remove items from them)
       List<dynamic> fundData = List.from(responses[0] as List<dynamic>);
       List<dynamic> payoutData = List.from(responses[1] as List<dynamic>);
       List<dynamic> indexData = List.from(responses[2] as List<dynamic>);
@@ -105,16 +103,13 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       // --- THE UNIVERSAL "COMMON DENOMINATOR" FIX ---
       List<DateTime> startDates = [];
       
-      // Find the absolute earliest date available for every active line
       if (fundData.isNotEmpty) startDates.add(DateTime.parse(fundData.first['validity_date'].toString()));
       if (_showKse100 && indexData.isNotEmpty) startDates.add(DateTime.parse(indexData.first['validity_date'].toString()));
       if (_showGold && goldData.isNotEmpty) startDates.add(DateTime.parse(goldData.first['validity_date'].toString()));
 
       if (startDates.isNotEmpty) {
-        // Find the LATEST of those starting dates (The Common Denominator)
         DateTime commonStartDate = startDates.reduce((a, b) => a.isAfter(b) ? a : b);
         
-        // Trim all datasets so they strictly start on or after the Common Denominator
         fundData.removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
         indexData.removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
         goldData.removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
@@ -125,7 +120,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       List<FlSpot> fundSpots = [];
       double startNav = 1.0; 
       
-      // Safe find for starting NAV
       for (var row in fundData) {
         double val = double.tryParse(row[isBenchmark ? 'value' : 'nav'].toString()) ?? 0.0;
         if (val > 0) { startNav = val; break; }
@@ -139,7 +133,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         String dateStr = row['validity_date'].toString();
         DateTime date = DateTime.parse(dateStr);
         
-        // ULTIMATE ZERO SHIELD
         double nav = double.tryParse(row[isBenchmark ? 'value' : 'nav'].toString()) ?? 0.0;
         if (nav <= 0) continue; 
 
@@ -160,7 +153,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         if (base100Value > localMaxY) localMaxY = base100Value;
       }
 
-      // SAFEGUARD: Ensure we actually have data to draw!
       if (fundSpots.length < 2) {
         if (mounted) setState(() { _isLoadingChart = false; _fundSpots = []; });
         return;
@@ -202,12 +194,13 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     }
   }
 
-  // --- FUND HOLDINGS ENGINE (TOP 10 COMPANIES + OTHERS/CASH) ---
+  // --- FUND HOLDINGS ENGINE (TOP 10 COMPANIES + OTHERS/CASH + DELTA) ---
   Future<void> _loadHoldingsData() async {
     try {
       final supabase = Supabase.instance.client;
       final String ticker = widget.fund['ticker']?.toString().trim().toUpperCase() ?? '';
 
+      // 1. Get the Current Month Date (Using EXACT string from DB)
       final dateResponse = await supabase.from('fund_holdings')
           .select('fmr_date').eq('fund_ticker', ticker).order('fmr_date', ascending: false).limit(1);
           
@@ -216,19 +209,46 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         return;
       }
       
-      String rawDate = dateResponse.first['fmr_date'].toString();
-      String latestDate = rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate;
+      // We now use the exact raw string from the database to prevent truncation issues
+      String latestDate = dateResponse.first['fmr_date'].toString(); 
 
-      final holdingsResponse = await supabase.from('fund_holdings')
-          .select('stock_ticker, holding_percentage')
-          .eq('fund_ticker', ticker).eq('fmr_date', latestDate);
+      // 2. Get the Previous Month Date (SAFER QUERY: Using .neq instead of .lt)
+      final prevDateResponse = await supabase.from('fund_holdings')
+          .select('fmr_date')
+          .eq('fund_ticker', ticker)
+          .neq('fmr_date', latestDate) // Grabs the next most recent date that isn't the current one
+          .order('fmr_date', ascending: false)
+          .limit(1);
+      
+      String? previousDate;
+      if (prevDateResponse.isNotEmpty) {
+        previousDate = prevDateResponse.first['fmr_date'].toString();
+      }
+
+      // 3. Fetch BOTH current and previous holdings simultaneously
+      var futures = <Future>[
+        supabase.from('fund_holdings').select('stock_ticker, holding_percentage').eq('fund_ticker', ticker).eq('fmr_date', latestDate)
+      ];
+      if (previousDate != null) {
+        futures.add(supabase.from('fund_holdings').select('stock_ticker, holding_percentage').eq('fund_ticker', ticker).eq('fmr_date', previousDate));
+      }
+
+      final results = await Future.wait(futures);
+      final holdingsResponse = results[0] as List<dynamic>;
+      final prevHoldingsResponse = results.length > 1 ? results[1] as List<dynamic> : [];
 
       if (holdingsResponse.isEmpty) {
         if (mounted) setState(() => _isLoadingHoldings = false);
         return;
       }
 
-      final List<String> stockTickers = (holdingsResponse as List).map((h) => h['stock_ticker'].toString().trim()).toList();
+      // Map the previous month's holdings for fast lookup
+      Map<String, double> prevHoldingsMap = {};
+      for (var p in prevHoldingsResponse) {
+        prevHoldingsMap[p['stock_ticker'].toString().trim()] = double.tryParse(p['holding_percentage'].toString()) ?? 0.0;
+      }
+
+      final List<String> stockTickers = holdingsResponse.map((h) => h['stock_ticker'].toString().trim()).toList();
       
       final stocksResponse = await supabase.from('master_stocks')
           .select('ticker, company_name')
@@ -242,6 +262,13 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         String sTicker = holding['stock_ticker'].toString().trim();
         double percent = double.tryParse(holding['holding_percentage'].toString()) ?? 0.0;
         
+        // Calculate Delta 
+        double? delta;
+        if (previousDate != null) {
+          double prevPercent = prevHoldingsMap[sTicker] ?? 0.0; 
+          delta = percent - prevPercent;
+        }
+
         var stockMeta = (stocksResponse as List).firstWhere(
           (s) => s['ticker'].toString().trim() == sTicker, 
           orElse: () => {'company_name': sTicker}
@@ -251,11 +278,11 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         
         // Clean up names and separate them into buckets
         if (sTicker == 'CASH') {
-          cashHoldings = {'ticker': sTicker, 'name': 'Cash & Equivalents', 'percentage': percent};
+          cashHoldings = {'ticker': sTicker, 'name': 'Cash & Equivalents', 'percentage': percent, 'delta': delta};
         } else if (sTicker == 'OTHER') {
-          otherHoldings = {'ticker': sTicker, 'name': 'Other Holdings', 'percentage': percent};
+          otherHoldings = {'ticker': sTicker, 'name': 'Other Holdings', 'percentage': percent, 'delta': delta};
         } else {
-          realCompanies.add({'ticker': sTicker, 'name': name, 'percentage': percent});
+          realCompanies.add({'ticker': sTicker, 'name': name, 'percentage': percent, 'delta': delta});
         }
       }
 
@@ -265,17 +292,18 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       // 2. Take exactly the Top 10 real companies
       List<Map<String, dynamic>> finalHoldings = realCompanies.take(10).toList();
 
-      // 3. Append the muted categories strictly at the bottom (if they have > 0%)
-      if (otherHoldings != null && (otherHoldings['percentage'] as double) > 0) {
-        finalHoldings.add(otherHoldings);
-      }
-      if (cashHoldings != null && (cashHoldings['percentage'] as double) > 0) {
-        finalHoldings.add(cashHoldings);
-      }
+      // 3. Append the muted categories strictly at the bottom
+      if (otherHoldings != null && (otherHoldings['percentage'] as double) > 0) finalHoldings.add(otherHoldings);
+      if (cashHoldings != null && (cashHoldings['percentage'] as double) > 0) finalHoldings.add(cashHoldings);
 
       if (mounted) {
         setState(() {
-          DateTime? parsedDate = DateTime.tryParse(latestDate);
+          DateTime? parsedDate;
+          try {
+             // Handle standard format for the UI header safely
+             parsedDate = DateTime.tryParse(latestDate.length >= 10 ? latestDate.substring(0, 10) : latestDate);
+          } catch (_) {}
+          
           _holdingsDate = parsedDate != null ? DateFormat('MMMM yyyy').format(parsedDate) : latestDate;
           _sectorAllocations = []; 
           _topHoldings = finalHoldings;
@@ -286,6 +314,48 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       debugPrint("Holdings Fetch Error: $e");
       if (mounted) setState(() => _isLoadingHoldings = false);
     }
+  }
+
+  // --- DELTA UI BUILDER (UPGRADED) ---
+  Widget _buildDeltaIndicator(double? delta) {
+    if (delta == null) {
+      return Container(
+        margin: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
+        child: const Text('First Month', style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
+      );
+    }
+    
+    if (delta.abs() < 0.01) {
+      return Container(
+        margin: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(6)),
+        child: const Text('No change', style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w600)),
+      );
+    }
+    
+    final isPositive = delta > 0;
+    final color = isPositive ? Colors.greenAccent : Colors.redAccent.shade200;
+    final icon = isPositive ? Icons.arrow_drop_up : Icons.arrow_drop_down;
+    
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1), 
+        borderRadius: BorderRadius.circular(6), 
+        border: Border.all(color: color.withOpacity(0.2))
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          Text('${delta.abs().toStringAsFixed(2)}%', style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
   }
 
   // --- EXISTING HELPERS ---
@@ -307,7 +377,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
 
   String _cleanFundName(String name) {
     return name.replaceAll('Exchange Traded Fund', 'ETF').replaceAll('Government', 'Govt.').trim();
-    // (Paste your full giant name shortener logic back here)
   }
 
   Widget _buildReturnRow(String label, String dbKey, int requiredDays, {int? years, bool isShariah = false}) {
@@ -417,7 +486,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Timeframe Selectors
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -439,7 +507,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
           ),
           const SizedBox(height: 24),
 
-          // The Actual Chart
           SizedBox(
             height: 250,
             child: _isLoadingChart 
@@ -460,7 +527,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                           sideTitles: SideTitles(
                             showTitles: true, 
                             reservedSize: 30, 
-                            // GRID SAFEGUARD: Prevents Division by Zero crash
                             interval: (_maxX - _minX) > 0 ? (_maxX - _minX) / 3 : 86400000.0 * 30,
                             getTitlesWidget: (value, meta) {
                               DateTime date = DateTime.fromMillisecondsSinceEpoch(value.toInt());
@@ -472,7 +538,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                       borderData: FlBorderData(show: false),
                       lineTouchData: LineTouchData(
                         touchTooltipData: LineTouchTooltipData(
-                          // tooltipBgColor: Colors.black87,
                           getTooltipItems: (touchedSpots) {
                             return touchedSpots.map((spot) {
                               DateTime date = DateTime.fromMillisecondsSinceEpoch(spot.x.toInt());
@@ -483,15 +548,12 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                         ),
                       ),
                       lineBarsData: [
-                        // Fund Line
                         LineChartBarData(
                           spots: _fundSpots, isCurved: true, color: Colors.tealAccent, barWidth: 2, isStrokeCapRound: true, dotData: const FlDotData(show: false),
                           belowBarData: BarAreaData(show: true, color: Colors.tealAccent.withOpacity(0.1)),
                         ),
-                        // KSE100 Line
                         if (_showKse100 && _kseSpots.isNotEmpty)
                           LineChartBarData(spots: _kseSpots, isCurved: true, color: Colors.orangeAccent, barWidth: 1.5, dotData: const FlDotData(show: false)),
-                        // Gold Line
                         if (_showGold && _goldSpots.isNotEmpty)
                           LineChartBarData(spots: _goldSpots, isCurved: true, color: Colors.yellowAccent, barWidth: 1.5, dotData: const FlDotData(show: false)),
                       ],
@@ -500,7 +562,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
           ),
           const SizedBox(height: 24),
           
-          // Benchmark Toggles
           Wrap(
             spacing: 12,
             children: [
@@ -535,7 +596,7 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     );
   }
 
-  // --- FUND HOLDINGS UI (OVERFLOW FIX & DISTINCT COLORS) ---
+  // --- FUND HOLDINGS UI ---
   Widget _buildHoldingsSection() {
     if (_isLoadingHoldings) {
       return const Padding(padding: EdgeInsets.symmetric(vertical: 40), child: Center(child: CircularProgressIndicator(color: Colors.tealAccent)));
@@ -548,7 +609,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     bool isOther(String name) => name == 'Other Holdings';
     bool isCash(String name) => name == 'Cash & Equivalents';
 
-    // OVERFLOW FIX: Find the absolute highest percentage in the list to use as our 100% baseline for the bars
     double absoluteMaxPercent = 0.0;
     for (var item in _topHoldings) {
       if ((item['percentage'] as double) > absoluteMaxPercent) {
@@ -595,12 +655,11 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                           String name = stock['name'].toString();
                           double val = stock['percentage'] as double;
                           
-                          // DISTINCT MUTED COLORS
                           Color sectionColor;
                           if (isOther(name)) {
-                            sectionColor = Colors.white24; // Lighter grey for Others
+                            sectionColor = Colors.white24; 
                           } else if (isCash(name)) {
-                            sectionColor = Colors.white10; // Darker grey for Cash
+                            sectionColor = Colors.white10; 
                           } else {
                             sectionColor = _sectorColors[idx % _sectorColors.length];
                           }
@@ -623,11 +682,9 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                 String name = stock['name'].toString();
                 double percent = stock['percentage'] as double;
                 
-                // MATH FIX: Guaranteed to be between 0.0 and 1.0
                 double barWidthFactor = absoluteMaxPercent > 0 ? (percent / absoluteMaxPercent) : 0.0;
                 if (barWidthFactor > 1.0) barWidthFactor = 1.0; 
 
-                // DISTINCT MUTED COLORS
                 Color itemColor;
                 if (isOther(name)) {
                   itemColor = Colors.white38;
@@ -654,7 +711,14 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                               ],
                             ),
                           ),
-                          Text('${percent.toStringAsFixed(2)}%', style: TextStyle(color: itemColor, fontSize: 13, fontWeight: FontWeight.bold)),
+                          // 🚨 THIS IS THE CRITICAL FIX: Calling _buildDeltaIndicator to draw on the UI!
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text('${percent.toStringAsFixed(2)}%', style: TextStyle(color: itemColor, fontSize: 13, fontWeight: FontWeight.bold)),
+                              _buildDeltaIndicator(stock['delta'] as double?),
+                            ],
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -742,7 +806,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                   Row(children: [_buildInfoPill('Inception Date', incDateStr), const SizedBox(width: 12), _buildInfoPill('TER (MTD)', terMtd), const SizedBox(width: 12), _buildInfoPill('TER (YTD)', terYtd)]), 
                   const SizedBox(height: 32),
                   
-                  // --- NEW: THE CHART BUTTON & EXPANDING AREA ---
                   if (!_isChartExpanded)
                     Center(
                       child: OutlinedButton.icon(

@@ -6,6 +6,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; 
 
+// IMPORTANT: Ensure this import points to your new Index Investing file!
+import 'package:bachat_vault/screens/index_investing_screen.dart';
+
+// ============================================================================
+// 1. THE NEW "TOOLS" MAIN MENU
+// ============================================================================
 class CalculatorsScreen extends StatefulWidget {
   const CalculatorsScreen({super.key});
 
@@ -14,11 +20,163 @@ class CalculatorsScreen extends StatefulWidget {
 }
 
 class _CalculatorsScreenState extends State<CalculatorsScreen>
-    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
-  late TabController _tabController;
-
+    with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
+
+  Widget _buildToolCard({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color accentColor,
+    required Widget destinationScreen,
+  }) {
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => destinationScreen),
+        );
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: accentColor.withOpacity(0.3)),
+          gradient: LinearGradient(
+            colors: [accentColor.withOpacity(0.1), Colors.transparent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: accentColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: accentColor, size: 32),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Theme(
+      data: Theme.of(context).copyWith(
+        textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme),
+      ),
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          title: const Text(
+            'Tools',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white),
+          ),
+          centerTitle: false,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          flexibleSpace: ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(color: Colors.black.withOpacity(0.2)),
+            ),
+          ),
+        ),
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF000000)],
+            ),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Select a Tool',
+                    style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Tool 1: Financial Calculators
+                  _buildToolCard(
+                    context: context,
+                    title: 'Financial Calculators',
+                    subtitle: 'Plan your Lumpsum, SIP, SWP, and FIRE goals.',
+                    icon: Icons.calculate_rounded,
+                    accentColor: Colors.tealAccent,
+                    destinationScreen: const FinancialCalculatorsScreen(),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Tool 2: Index Investing
+                  _buildToolCard(
+                    context: context,
+                    title: 'DIY Index Portfolio',
+                    subtitle: 'Index Investing for KSE100, KMI30 & PSXDIV20.',
+                    icon: Icons.pie_chart_rounded,
+                    accentColor: Colors.amberAccent, // Keeping the distinct amber color
+                    destinationScreen: const IndexInvestingScreen(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 2. THE TABBED FINANCIAL CALCULATORS SCREEN
+// ============================================================================
+class FinancialCalculatorsScreen extends StatefulWidget {
+  const FinancialCalculatorsScreen({super.key});
+
+  @override
+  State<FinancialCalculatorsScreen> createState() => _FinancialCalculatorsScreenState();
+}
+
+class _FinancialCalculatorsScreenState extends State<FinancialCalculatorsScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
 
   @override
   void initState() {
@@ -34,7 +192,6 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     return Theme(
       data: Theme.of(context).copyWith(
         textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme),
@@ -46,9 +203,10 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
             'Calculators',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white),
           ),
-          centerTitle: false,
+          centerTitle: true,
           backgroundColor: Colors.transparent,
           elevation: 0,
+          leading: const BackButton(color: Colors.white),
           flexibleSpace: ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -98,8 +256,10 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
 }
 
 // ============================================================================
-// LUMPSUM CALCULATOR
+// 3. CALCULATOR WIDGETS (Kept exactly as you had them)
 // ============================================================================
+
+// --- LUMPSUM CALCULATOR ---
 class LumpsumCalculator extends StatefulWidget {
   const LumpsumCalculator({super.key});
   @override
@@ -252,9 +412,7 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
   }
 }
 
-// ============================================================================
-// SIP CALCULATOR (WITH INTERNAL DATA FETCH & TWO-KEY CLEANER)
-// ============================================================================
+// --- SIP CALCULATOR ---
 class SipCalculator extends StatefulWidget {
   const SipCalculator({super.key});
   @override
@@ -291,7 +449,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     _fetchFundsData(); 
   }
 
-  // --- LOCAL DATA CLEANERS ---
   final Map<String, String> categoryMap = {
     'Equity': 'Equity', 'Shariah Compliant Equity': 'Equity',
     'Money Market': 'Money Market', 'Shariah Compliant Money Market': 'Money Market',
@@ -305,7 +462,25 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     'Index Tracker': 'Index Tracker', 'Shariah Compliant Index Tracker': 'Index Tracker', 'Index': 'Index',
     'Shariah Compliant Commodities': 'Commodities',
     'Exchange Traded Fund': 'Exchange Traded Fund', 'Shariah Compliant Exchange Traded Fund': 'Exchange Traded Fund',
-    'Dedicated Equity': 'Dedicated Equity', 'Shariah Compliant Dedicated Equity': 'Dedicated Equity',
+    'VPS-Money Market': 'VPS-Money Market', 'VPS-Shariah Compliant Money Market': 'VPS-Money Market',
+    'VPS-Debt': 'VPS-Debt', 'VPS-Shariah Compliant Debt': 'VPS-Debt',
+    'VPS-Commodities / Gold': 'VPS-Commodities', 'VPS-Shariah Compliant Commodities / Gold': 'VPS-Commodities',
+    'VPS-Equity': 'VPS-Equity', 'VPS-Shariah Compliant Equity': 'VPS-Equity',
+    'Dedicated Equity': 'Equity', 'Shariah Compliant Dedicated Equity': 'Equity',
+  };
+
+  final Map<String, String> amcMap = {
+    '786 Investments Limited': '786 Investments', 'ABL Asset Management Company Limited': 'ABL Funds',
+    'AKD Investment Management Limited': 'AKD Investment Management', 'Al Habib Asset Management Limited': 'Al Habib Asset Management',
+    'Al Meezan Investment Management Limited': 'Al Meezan Investments', 'Alfalah Asset Management Limited': 'Alfalah Asset Management',
+    'Atlas Asset Management Limited': 'Atlas Asset Management', 'AWT Investments Limited': 'AWT Investments',
+    'Faysal Asset Management Limited': 'Faysal Funds', 'First Capital Investments Limited': 'First Capital Investments',
+    'HBL Asset Management Limited': 'HBL Asset Management', 'JS Investments Limited': 'JS Investments',
+    'Lakson Investments Limited': 'Lakson Investments', 'Lucky Investments Limited': 'Lucky Investments',
+    'Mahaana Wealth Limited': 'Mahaana Wealth', 'MCB Investment Management Limited': 'MCB Funds',
+    'National Investment Trust Limited': 'National Investment Trust', 'NBP Fund Management Limited': 'NBP Funds',
+    'Pak Oman Asset Management Company Limited': 'Pak Oman Asset Management', 'Pak-Qatar Asset Management Company Limited': 'Pak Qatar Asset Management',
+    'EFU Life Insurance Limited': 'EFU Life Insurance', 'UBL Fund Managers Limited': 'UBL Funds',
   };
 
   String _cleanFundName(String name) {
@@ -324,11 +499,11 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
         .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)', 'Faysal Nuumah Women Savers Plan')
+        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)", "Faysal Nu'umah Women Savers Plan")
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
-        .replaceAll('Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)', 'Faysal Barakaah Women Savers Plan')
+        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)", "Faysal Barak'ah Women Savers Plan")
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
@@ -376,7 +551,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
 
   Future<void> _fetchFundsData() async {
     final SupabaseClient supabase = Supabase.instance.client;
-
     try {
       final masterResponse = await supabase.from('master_funds').select('ticker, fund_name, category');
       final statsResponse = await supabase.from('performance_stats').select('ticker, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y');
@@ -389,7 +563,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
         final mappedCat = categoryMap[rawCat] ?? rawCat;
         final rawName = mf['fund_name']?.toString() ?? 'Unknown';
 
-        if (rawCat.toUpperCase().contains('VPS') || mappedCat.toUpperCase().contains('VPS')) continue;
         if (mappedCat == 'Crypto' || ['KSE100', 'KMI30', 'GOLD_24K', 'CPI_PK'].contains(mf['ticker'])) continue;
 
         final ticker = mf['ticker'];
@@ -568,7 +741,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     super.build(context);
     final bool showInflation = (double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0) > 0;
     
-    // Filters using the short categories we injected
     List<Map<String, dynamic>> filteredFunds = _selectedCategory == 'All' 
         ? _allFunds 
         : _allFunds.where((f) => (f['short_category'] ?? f['category']) == _selectedCategory).toList();
@@ -694,9 +866,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
   }
 }
 
-// ============================================================================
-// SWP CALCULATOR
-// ============================================================================
+// --- SWP CALCULATOR ---
 class SwpCalculator extends StatefulWidget {
   const SwpCalculator({super.key});
   @override
@@ -821,9 +991,7 @@ class _SwpCalculatorState extends State<SwpCalculator> with AutomaticKeepAliveCl
   }
 }
 
-// ============================================================================
-// FIRE CALCULATOR
-// ============================================================================
+// --- FIRE CALCULATOR ---
 class FireCalculator extends StatefulWidget {
   const FireCalculator({super.key});
   @override

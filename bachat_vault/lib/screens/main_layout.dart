@@ -14,7 +14,7 @@ class _MainLayoutState extends State<MainLayout> {
 
   final List<Widget> _screens = [
     const DashboardScreen(),
-    const CalculatorsScreen(),
+    const CalculatorsScreen(), // Note: We keep the screen name the same, just changing the UI label
   ];
 
   @override
@@ -55,8 +55,9 @@ class _MainLayoutState extends State<MainLayout> {
               label: 'Market',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.calculate_rounded),
-              label: 'Calculators',
+              // UPDATED: Changed the icon and label to represent 'Tools'
+              icon: Icon(Icons.apps_rounded), 
+              label: 'Tools',
             ),
           ],
         ),

@@ -16,6 +16,8 @@ import 'package:bachat_vault/screens/etfs_screen.dart';
 import 'package:bachat_vault/screens/overseas_investors_screen.dart';
 import 'package:bachat_vault/screens/account_opening_screen.dart';
 import 'package:bachat_vault/screens/terms_conditions_screen.dart';
+import 'package:bachat_vault/screens/live_estimation_screen.dart';
+import 'package:bachat_vault/screens/index_investing_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -131,8 +133,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       'VPS-Shariah Compliant Commodities / Gold': 'VPS-Commodities',
       'VPS-Equity': 'VPS-Equity',
       'VPS-Shariah Compliant Equity': 'VPS-Equity',
-      'Dedicated Equity': 'Dedicated Equity',
-      'Shariah Compliant Dedicated Equity': 'Dedicated Equity',
+      // UPDATED: Dedicated Equity now correctly maps to Equity
+      'Dedicated Equity': 'Equity',
+      'Shariah Compliant Dedicated Equity': 'Equity',
     };
 
     final Map<String, String> amcMap = {
@@ -212,7 +215,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           'Faysal Islamic Sovereign Plan II',
         )
         .replaceAll(
-          "Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)",
+          "Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)",
           "Faysal Nu'umah Women Savers Plan",
         )
         .replaceAll(
@@ -228,7 +231,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           'Faysal Priority Ascend Plan III',
         )
         .replaceAll(
-          "Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)",
+          "Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)",
           "Faysal Barak'ah Women Savers Plan",
         )
         .replaceAll(
@@ -1061,13 +1064,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                   'https://www.facebook.com/groups/2125880957874842',
                 ),
               ),
+              
+              // UPDATED: WhatsApp Group is now WhatsApp Community!
               _buildDrawerItem(
-                Icons.chat_rounded,
-                'WhatsApp Group',
+                Icons.forum_rounded, // Changed to a nice forum/community icon
+                'WhatsApp Community',
                 () => _launchURL(
-                  'https://chat.whatsapp.com/HHUBK1TR6h918qOlfx4n4v?mode=gi_t',
+                  'https://chat.whatsapp.com/DRjEqXeB6zSF1KyFNZhXAC', // <-- PASTE YOUR NEW LINK HERE
                 ),
               ),
+              
               _buildDrawerItem(
                 Icons.campaign_rounded,
                 'WhatsApp Channel',
@@ -1298,8 +1304,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 16),
 
+                              // --- 1st Button: Explore Full Performance ---
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                                 child: InkWell(
@@ -1341,7 +1348,63 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         ),
                                         SizedBox(width: 8),
                                         Text(
-                                          'Explore Full Performance',
+                                          'Fund Performance Screener',
+                                          style: TextStyle(
+                                            color: Colors.black87,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              
+                              const SizedBox(height: 16), // Spacing between the buttons
+
+                              // --- 2nd Button: Live Fund Estimation ---
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                                child: InkWell(
+                                  onTap: () {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => const LiveEstimationScreen(),
+    ),
+  );
+},
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    decoration: BoxDecoration(
+                                      // Using the exact same matching gradient and design
+                                      gradient: const LinearGradient(
+                                        colors: [Colors.tealAccent, Colors.teal],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.tealAccent.withOpacity(0.3),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.bolt_rounded, // Lightning icon to signify "Live"
+                                          color: Colors.black87,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Live Fund Estimator',
                                           style: TextStyle(
                                             color: Colors.black87,
                                             fontSize: 16,

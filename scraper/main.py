@@ -133,7 +133,7 @@ def filter_protected_entries(batch, table_name, date_col="validity_date"):
 # --- TASK A: PSX INDICES (UPDATED FOR LDCP & EOD TIMING) ---
 def sync_psx_indices():
     now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
-    if 8 <= now_pk.hour < 17:
+    if 9 <= now_pk.hour < 16:
         print("📈 Skipping PSX Indices (EOD) - Market is open.")
         return
 

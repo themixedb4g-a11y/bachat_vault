@@ -196,13 +196,12 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       filtered = filtered.where((f) => f[sortKey] != null).toList();
     }
 
-    // SMART SORTING
-
+// SMART SORTING
     filtered.sort((a, b) {
       final valA = _selectedPeriod == 'Custom'
           ? (_customReturnsMap[a['ticker']] ?? -999.0)
           : (a[sortKey] as num?)?.toDouble() ?? -999.0;
-         
+          
       final valB = _selectedPeriod == 'Custom'
           ? (_customReturnsMap[b['ticker']] ?? -999.0)
           : (b[sortKey] as num?)?.toDouble() ?? -999.0;
@@ -210,19 +209,27 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       final logicA = a['return_logic']?.toString().trim() ?? '';
       final logicB = b['return_logic']?.toString().trim() ?? '';
 
-      if (logicA == 'Absolute' && logicB == 'Absolute') {
+      // 1. Define short-term sort keys that require strict date sorting
+      // (Added both 'return_ytd' and 'return_fytd' just to be safe depending on your exact schema)
+      final shortTermKeys = ['return_1d', 'return_mtd', 'return_30d', 'return_fytd', 'return_ytd', 'return_1y'];
+      final isShortTerm = shortTermKeys.contains(sortKey);
+
+      // 2. Apply date-first sorting ONLY for Absolute funds in short-term periods
+      if (isShortTerm && logicA == 'Absolute' && logicB == 'Absolute') {
         final dateStrA = a['last_validity_date']?.toString();
         final dateStrB = b['last_validity_date']?.toString();
         final dateA = dateStrA != null ? (DateTime.tryParse(dateStrA) ?? DateTime(1970)) : DateTime(1970);
         final dateB = dateStrB != null ? (DateTime.tryParse(dateStrB) ?? DateTime(1970)) : DateTime(1970);
 
-        int dateComparison = dateB.compareTo(dateA);
+        int dateComparison = dateB.compareTo(dateA); // Descending (Latest date first)
+        
+        // If dates are different, rank by the latest date first
         if (dateComparison != 0) return dateComparison;
       }
+      
+      // 3. Fallback: If long-term, Custom, non-Absolute, or dates are exactly the same, sort strictly by return
       return valB.compareTo(valA);
     });
-
-
 
     return filtered;
 
