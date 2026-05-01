@@ -114,13 +114,10 @@ class _IndexInvestingScreenState extends State<IndexInvestingScreen> {
       double normalizedWeight = originalWeight / _actualMathematicalWeight;
       double allocatedCash = _investmentAmount * normalizedWeight;
       
-      // We use .floor() to ensure we NEVER exceed the user's budget.
       int sharesToBuy = (allocatedCash / currentPrice).floor();
-      
       double actualCost = sharesToBuy * currentPrice;
       totalCostTracker += actualCost;
 
-      // Minimum budget needed to buy 1 share of this stock at its current weight.
       double requiredForOneShare = currentPrice / normalizedWeight;
       if (requiredForOneShare > maxRequiredCash) {
         maxRequiredCash = requiredForOneShare;
@@ -204,7 +201,8 @@ class _IndexInvestingScreenState extends State<IndexInvestingScreen> {
           title: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.diamond_rounded, color: Colors.amberAccent, size: 20),
+              // 🚨 NEW ICON: Pie Chart!
+              Icon(Icons.pie_chart_rounded, color: Colors.amberAccent, size: 20),
               SizedBox(width: 8),
               Text('DIY Index Portfolio', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
             ],
@@ -235,7 +233,7 @@ class _IndexInvestingScreenState extends State<IndexInvestingScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildField(label: 'Investment Value', prefix: 'PKR', suffix: '', controller: _amountController, isCurrency: true),
+                                  _buildField(label: 'Target Budget', prefix: 'PKR', suffix: '', controller: _amountController, isCurrency: true),
                                   const SizedBox(height: 16),
                                   Row(
                                     children: [
@@ -246,7 +244,7 @@ class _IndexInvestingScreenState extends State<IndexInvestingScreen> {
                                           value: _selectedIndex,
                                           items: const [
                                             DropdownMenuItem(value: 'KSE100', child: Text('KSE-100')),
-                                            DropdownMenuItem(value: 'KMI30', child: Text('KMI-30')),
+                                            DropdownMenuItem(value: 'KMI30', child: Text('KMI-30 (Islamic)')),
                                             DropdownMenuItem(value: 'PSXDIV20', child: Text('PSX DIV 20')),
                                           ],
                                           onChanged: (val) { if (val != null) { setState(() => _selectedIndex = val); _calculateAllocations(); } },
@@ -258,12 +256,12 @@ class _IndexInvestingScreenState extends State<IndexInvestingScreen> {
                                         child: _buildDropdown<int>(
                                           label: 'Holdings',
                                           value: _topN,
+                                          // 🚨 "Top 30" Removed!
                                           items: const [
                                             DropdownMenuItem(value: 5, child: Text('Top 5')),
                                             DropdownMenuItem(value: 10, child: Text('Top 10')),
                                             DropdownMenuItem(value: 15, child: Text('Top 15')),
                                             DropdownMenuItem(value: 20, child: Text('Top 20')),
-                                            DropdownMenuItem(value: 30, child: Text('Top 30')),
                                             DropdownMenuItem(value: 999, child: Text('All')),
                                           ],
                                           onChanged: (val) { if (val != null) { setState(() => _topN = val); _calculateAllocations(); } },
@@ -315,7 +313,6 @@ class _IndexInvestingScreenState extends State<IndexInvestingScreen> {
                         ),
                         const SizedBox(height: 24),
 
-                        // --- ACTUAL COST DASHBOARD ---
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -385,8 +382,8 @@ class _IndexInvestingScreenState extends State<IndexInvestingScreen> {
                                     children: [
                                       Text(stock['ticker'].toString(), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
                                       const SizedBox(height: 4),
-                                      Text('Idx Wgt: ${(stock['original_weight'] as double).toStringAsFixed(2)}%', style: const TextStyle(color: Colors.white54, fontSize: 10)),
-                                      Text('Your Wgt: ${(stock['normalized_weight'] as double).toStringAsFixed(2)}%', style: const TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      // 🚨 UI CLEANUP: Single weight line instead of two confusing percentages!
+                                      Text('Allocated Weight: ${(stock['normalized_weight'] as double).toStringAsFixed(2)}%', style: const TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold)),
                                     ],
                                   ),
                                 ),

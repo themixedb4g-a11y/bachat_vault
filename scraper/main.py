@@ -10,7 +10,7 @@ import urllib3
 import sys
 from concurrent.futures import ThreadPoolExecutor
 import yfinance as yf
-import functions_framework  # <-- Google Cloud requirement
+import functions_framework
 
 session = requests.Session()
 session.headers.update(
@@ -19,7 +19,6 @@ session.headers.update(
     }
 )
 
-# Suppress SSL Warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 1. CONNECTION ---
@@ -31,7 +30,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     sys.exit(1)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- PRE-FETCH FUND MASTER DATA FOR GUARDRAILS ---
+# --- 2. PRE-FETCH DATA & SETTINGS ---
 master_res = (
     supabase.table("master_funds")
     .select("ticker, category, return_logic, fund_id_mufap, amc_website_name")
@@ -41,6 +40,15 @@ FUND_LOGIC_MAP = {
     row["ticker"]: row.get("return_logic", "Absolute") for row in master_res.data
 }
 FUND_CATEGORY_MAP = {row["ticker"]: row.get("category", "") for row in master_res.data}
+
+# Fetch Holidays & Settings for Guardrails
+holidays_res = supabase.table("market_holidays").select("holiday_date").execute()
+HOLIDAYS = set([row["holiday_date"] for row in holidays_res.data])
+
+settings_res = (
+    supabase.table("system_settings").select("setting_key, setting_value").execute()
+)
+SETTINGS = {row["setting_key"]: row["setting_value"] for row in settings_res.data}
 
 
 # --- THE GUARDRAILS ---
@@ -56,7 +64,6 @@ def is_valid_date(date_str, ticker):
 
         if ticker_logic == "Absolute":
             if dt > today_pk:
-                print(f"   🛡️ Guardrail active: Skipped {ticker} (Future Date {dt})")
                 return False
 
             weekend_exceptions = [
@@ -73,12 +80,16 @@ def is_valid_date(date_str, ticker):
                 "USDPKR",
             ]
 
+            # 🚨 NEW: Holiday Guardrail!
+            if date_str in HOLIDAYS and ticker not in weekend_exceptions:
+                print(f"   🛡️ Guardrail active: Skipped {ticker} (Holiday {date_str})")
+                return False
+
             if dt.weekday() >= 5 and ticker not in weekend_exceptions:
                 print(f"   🛡️ Guardrail active: Skipped {ticker} (Weekend Date {dt})")
                 return False
 
         return True
-
     except Exception as e:
         print(f"   ⚠️ Date parsing error for {ticker}: {e}")
         return False
@@ -90,14 +101,12 @@ def filter_protected_entries(batch, table_name, date_col="validity_date"):
         return []
     try:
         dates = list(set([item[date_col] for item in batch]))
-
         res = (
             supabase.table(table_name)
             .select(f"ticker, {date_col}, source")
             .in_(date_col, dates)
             .execute()
         )
-
         existing_map = {
             (r["ticker"], r[date_col]): (r.get("source") or "") for r in res.data
         }
@@ -108,11 +117,8 @@ def filter_protected_entries(batch, table_name, date_col="validity_date"):
             existing_source = existing_map.get(key, "")
             incoming_source = item.get("source") or ""
 
-            # 1. Manual is God Mode. Nothing can overwrite it.
             if existing_source == "Manual":
                 continue
-
-            # 2. MUFAP is the safety net. It can never overwrite AMC_Website.
             if incoming_source == "MUFAP" and existing_source == "AMC_Website":
                 continue
 
@@ -123,17 +129,25 @@ def filter_protected_entries(batch, table_name, date_col="validity_date"):
             print(
                 f"   🛡️ Hierarchy Guardrail: Protected {skipped} higher-priority records."
             )
-
         return filtered_batch
     except Exception as e:
-        print(f"   ⚠️ Could not check protected entries, proceeding carefully: {e}")
         return batch
 
 
-# --- TASK A: PSX INDICES (UPDATED FOR LDCP & EOD TIMING) ---
+# --- TASK A: PSX INDICES ---
 def sync_psx_indices():
     now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
-    if 9 <= now_pk.hour < 16:
+    today_str = now_pk.strftime("%Y-%m-%d")
+
+    # 🚨 NEW: Dynamic EOD Timing logic. Will NOT skip if today is a holiday/weekend!
+    market_override = SETTINGS.get("market_status_override", "AUTO")
+    is_market_open_today = (
+        (today_str not in HOLIDAYS)
+        and (now_pk.weekday() < 5)
+        and (market_override != "CLOSED")
+    )
+
+    if is_market_open_today and (9 <= now_pk.hour < 16):
         print("📈 Skipping PSX Indices (EOD) - Market is open.")
         return
 
@@ -141,8 +155,6 @@ def sync_psx_indices():
     try:
         response = session.get("https://dps.psx.com.pk", timeout=15)
         tree = html.fromstring(response.content)
-
-        # Grab all stats blocks for LDCP mapping
         stats_elements = tree.xpath("//div[@class='stats_value']")
 
         batch = []
@@ -156,8 +168,6 @@ def sync_psx_indices():
                 val = float(
                     val_result[0].text_content().strip().replace(",", "").split(" ")[0]
                 )
-
-                # --- LDCP Extraction Logic ---
                 ldcp_val = None
                 try:
                     if ticker == "KSE100" and len(stats_elements) > 3:
@@ -170,12 +180,11 @@ def sync_psx_indices():
                             stats_elements[27].text_content().strip().replace(",", "")
                         )
                         ldcp_val = float(re.search(r"[\d\.]+", ldcp_text).group())
-                except Exception as e:
-                    print(f"   ⚠️ Could not parse LDCP for {ticker}: {e}")
+                except Exception:
+                    pass
 
                 raw_date_text = date_result[0].text_content().strip()
                 date_match = re.search(r"([A-Za-z]+\s\d{1,2},\s\d{4})", raw_date_text)
-
                 if date_match:
                     date_str = date_match.group(1)
                     try:
@@ -187,15 +196,13 @@ def sync_psx_indices():
                             "%Y-%m-%d"
                         )
                 else:
-                    web_date = datetime.now(pytz.timezone("Asia/Karachi")).strftime(
-                        "%Y-%m-%d"
-                    )
+                    web_date = today_str
 
                 batch.append(
                     {
                         "ticker": ticker,
                         "value": val,
-                        "ldcp": ldcp_val,  # NEW
+                        "ldcp": ldcp_val,
                         "validity_date": web_date,
                         "source": "PSX",
                     }
@@ -384,13 +391,23 @@ def fetch_etf(ticker):
 
 def sync_psx_etfs():
     now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
+    today_str = now_pk.strftime("%Y-%m-%d")
 
-    # EOD Timing Guardrail: Skip during market hours
-    if 8 <= now_pk.hour < 17:
+    # 🚨 Define the market status locally so this function understands it!
+    market_override = SETTINGS.get("market_status_override", "AUTO")
+    is_market_open_today = (
+        (today_str not in HOLIDAYS)
+        and (now_pk.weekday() < 5)
+        and (market_override != "CLOSED")
+    )
+
+    # EOD Timing Guardrail: Skip during active market hours
+    if is_market_open_today and (8 <= now_pk.hour < 17):
         print("📊 Skipping PSX ETFs (EOD) - Market is open.")
         return
 
     print("📊 Syncing ETFs from PSX...")
+
     psx_etf_tickers = []
     for ticker, category in FUND_CATEGORY_MAP.items():
         if "Exchange Traded Fund" in str(category):

@@ -34,6 +34,10 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
   String _selectedAmc = 'All';
   String _selectedCategory = 'All';
 
+  // MARKET STATUS STATE
+  String _marketStatusText = 'Checking...';
+  Color _marketStatusColor = Colors.white54;
+
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
   final Map<String, String> categoryMap = {
@@ -156,15 +160,21 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
 
     try {
       final results = await Future.wait([
-        // 🚨 Fetching is_shariah from the database so we can apply proxy logic and UI icons!
         supabase.from('master_funds').select('ticker, fund_name, amc_name, category, is_shariah'),
         supabase.from('live_stock_prices').select('ticker, current_price, change, change_percent'),
         supabase.from('fund_holdings').select('fund_ticker, stock_ticker, holding_percentage, fmr_date'),
+        supabase.from('market_holidays').select('holiday_date'),
+        supabase.from('system_settings').select('setting_key, setting_value'),
       ]);
 
       final fundsData = results[0] as List<dynamic>;
       final liveData = results[1] as List<dynamic>;
       final holdingsData = results[2] as List<dynamic>;
+      final holidaysData = results[3] as List<dynamic>;
+      final settingsData = results[4] as List<dynamic>;
+
+      // Resolve Market Status Logic
+      _resolveMarketStatus(holidaysData, settingsData);
 
       _liveStocks.clear();
       _indices.clear();
@@ -199,7 +209,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
           'category': cleanCat,
           'amc_name': cleanAmc,
           'fund_name': cleanName,
-          'is_shariah': isShariah, // Saving the cleaned boolean
+          'is_shariah': isShariah, 
         });
 
         if (cleanAmc.isNotEmpty) amcSet.add(cleanAmc);
@@ -244,14 +254,66 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
     }
   }
 
+  // --- MARKET STATUS ENGINE ---
+  void _resolveMarketStatus(List<dynamic> holidaysData, List<dynamic> settingsData) {
+    // 1. Get settings
+    String override = 'AUTO';
+    bool isRamazan = false;
+    for (var s in settingsData) {
+      if (s['setting_key'] == 'market_status_override') override = s['setting_value'].toString().toUpperCase();
+      if (s['setting_key'] == 'ramazan_timings') isRamazan = s['setting_value'].toString().toUpperCase() == 'TRUE';
+    }
+
+    // 2. PKT Conversion & Time Math
+    DateTime utcNow = DateTime.now().toUtc();
+    DateTime pktNow = utcNow.add(const Duration(hours: 5));
+    String todayStr = DateFormat('yyyy-MM-dd').format(pktNow);
+    double hourDecimal = pktNow.hour + (pktNow.minute / 60.0);
+
+    // 3. Calendar Check
+    bool isWeekend = pktNow.weekday == DateTime.saturday || pktNow.weekday == DateTime.sunday;
+    bool isHoliday = holidaysData.any((h) => h['holiday_date'].toString() == todayStr);
+
+    void setStatus(bool isOpen) {
+      _marketStatusText = isOpen ? 'Market ON' : 'Market OFF';
+      _marketStatusColor = isOpen ? Colors.greenAccent : Colors.redAccent;
+    }
+
+    if (override == 'CLOSED') {
+      setStatus(false);
+      return;
+    } else if (override == 'OPEN') {
+      setStatus(true);
+      return;
+    }
+
+    if (isWeekend || isHoliday) {
+      setStatus(false);
+      return;
+    }
+
+    // Time Check
+    if (isRamazan) {
+      // Ramazan: 9:00 AM - 1:30 PM (Mon-Thu), 9:00 AM - 12:30 PM (Fri)
+      if (pktNow.weekday == DateTime.friday) {
+         setStatus(hourDecimal >= 9.0 && hourDecimal <= 12.5);
+      } else {
+         setStatus(hourDecimal >= 9.0 && hourDecimal <= 13.5);
+      }
+    } else {
+      // Standard: 9:30 AM - 3:30 PM (Mon-Thu), Friday split
+      if (pktNow.weekday == DateTime.friday) {
+        setStatus((hourDecimal >= 9.5 && hourDecimal <= 12.0) || (hourDecimal >= 14.5 && hourDecimal <= 16.5));
+      } else {
+        setStatus(hourDecimal >= 9.5 && hourDecimal <= 15.5);
+      }
+    }
+  }
+
   void _calculateEstimations() {
     _estimatedFunds.clear();
-
-    // 1. Grab proxy data for unmapped assets
     double kse100Change = double.tryParse(_indices['KSE100']?['change_percent']?.toString() ?? '0') ?? 0.0;
     double kmi30Change = double.tryParse(_indices['KMI30']?['change_percent']?.toString() ?? '0') ?? 0.0;
-    
-    // 2. Adjusting Cash to a realistic 10% annual proxy
     double dailyCashYield = 10.0 / 365.0; 
 
     for (var fund in _masterFunds) {
@@ -271,24 +333,20 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
         double holdingPercent = double.tryParse(holding['holding_percentage'].toString()) ?? 0.0;
         
         if (_liveStocks.containsKey(stockTicker)) {
-          // Found exact stock
           double stockLiveChangePct = double.tryParse(_liveStocks[stockTicker]!['change_percent'].toString()) ?? 0.0;
           totalEstimatedReturnPercent += (holdingPercent / 100.0) * stockLiveChangePct;
           totalMappedWeight += holdingPercent;
           mappedStocksCount++;
         } else if (stockTicker == 'CASH') {
-          // Proxy cash
           totalEstimatedReturnPercent += (holdingPercent / 100.0) * dailyCashYield;
           totalMappedWeight += holdingPercent;
         } else if (stockTicker == 'OTHER') {
-          // Proxy unmapped equity dynamically based on fund type!
           totalEstimatedReturnPercent += (holdingPercent / 100.0) * proxyIndexChange;
           totalMappedWeight += holdingPercent;
         }
       }
 
       if (mappedStocksCount > 0) {
-        // Normalization Math to ensure we represent 100% of the fund's movement
         if (totalMappedWeight > 0 && totalMappedWeight < 100) {
           totalEstimatedReturnPercent = totalEstimatedReturnPercent * (100.0 / totalMappedWeight);
         }
@@ -307,12 +365,8 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
   void _applyFilters() {
     List<Map<String, dynamic>> temp = _estimatedFunds;
 
-    if (_selectedAmc != 'All') {
-      temp = temp.where((f) => f['amc_name'] == _selectedAmc).toList();
-    }
-    if (_selectedCategory != 'All') {
-      temp = temp.where((f) => f['category'] == _selectedCategory).toList();
-    }
+    if (_selectedAmc != 'All') temp = temp.where((f) => f['amc_name'] == _selectedAmc).toList();
+    if (_selectedCategory != 'All') temp = temp.where((f) => f['category'] == _selectedCategory).toList();
 
     temp.sort((a, b) => (b['estimated_percent'] as double).compareTo(a['estimated_percent'] as double));
 
@@ -331,21 +385,12 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
         Container(
           height: 48,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
-          ),
+          decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.1))),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              isExpanded: true,
-              dropdownColor: const Color(0xFF1E293B),
-              icon: const Icon(Icons.keyboard_arrow_down, color: Colors.tealAccent),
-              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-              value: value,
-              items: items.map((String item) {
-                return DropdownMenuItem<String>(value: item, child: Text(item, maxLines: 1, overflow: TextOverflow.ellipsis));
-              }).toList(),
+              isExpanded: true, dropdownColor: const Color(0xFF1E293B), icon: const Icon(Icons.keyboard_arrow_down, color: Colors.tealAccent),
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600), value: value,
+              items: items.map((String item) { return DropdownMenuItem<String>(value: item, child: Text(item, maxLines: 1, overflow: TextOverflow.ellipsis)); }).toList(),
               onChanged: onChanged,
             ),
           ),
@@ -367,11 +412,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.03),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.03), borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withOpacity(0.3))),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -407,17 +448,12 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
               Text('Live Fund Estimator', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
             ],
           ),
-          centerTitle: true,
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: const BackButton(color: Colors.white),
+          centerTitle: true, backgroundColor: Colors.transparent, elevation: 0, leading: const BackButton(color: Colors.white),
           flexibleSpace: ClipRect(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), child: Container(color: Colors.black.withOpacity(0.2)))),
         ),
         body: Container(
           width: double.infinity, height: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF000000)]),
-          ),
+          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF000000)])),
           child: SafeArea(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Colors.tealAccent))
@@ -436,22 +472,12 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                   Center(
                                     child: IntrinsicWidth(
                                       child: TextField(
-                                        controller: _investmentController,
-                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                        inputFormatters: [IndianNumberFormatter()],
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800, height: 1.2),
-                                        decoration: const InputDecoration(prefixText: 'PKR ', prefixStyle: TextStyle(color: Colors.tealAccent, fontSize: 20, fontWeight: FontWeight.w700), border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
-                                        onChanged: (val) {
-                                          setState(() {
-                                            _investmentAmount = double.tryParse(val.replaceAll(',', '')) ?? 0.0;
-                                          });
-                                        },
+                                        controller: _investmentController, keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: [IndianNumberFormatter()], textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800, height: 1.2), decoration: const InputDecoration(prefixText: 'PKR ', prefixStyle: TextStyle(color: Colors.tealAccent, fontSize: 20, fontWeight: FontWeight.w700), border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
+                                        onChanged: (val) { setState(() { _investmentAmount = double.tryParse(val.replaceAll(',', '')) ?? 0.0; }); },
                                       ),
                                     ),
                                   ),
                                   const SizedBox(height: 24),
-
                                   Row(
                                     children: [
                                       Expanded(child: _buildDropdown('AMC', _selectedAmc, _amcs, (v) { setState(() => _selectedAmc = v!); _applyFilters(); })),
@@ -460,8 +486,25 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 24),
-
-                                  const Text('Live Market Pulse', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                  
+                                  // 🚨 NEW: THE MARKET STATUS BADGE!
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text('Live Market Pulse', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(color: _marketStatusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: _marketStatusColor.withOpacity(0.3))),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.circle, color: _marketStatusColor, size: 8),
+                                            const SizedBox(width: 6),
+                                            Text(_marketStatusText, style: TextStyle(color: _marketStatusColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                   const SizedBox(height: 12),
                                   Row(
                                     children: [
@@ -471,7 +514,6 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 32),
-
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
@@ -484,7 +526,6 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                               ),
                             ),
                           ),
-
                           SliverPadding(
                             padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 0),
                             sliver: _filteredEstimatedFunds.isEmpty
@@ -501,8 +542,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                         Color pColor = isPositive ? Colors.greenAccent : Colors.redAccent.shade200;
 
                                         return Container(
-                                          margin: const EdgeInsets.only(bottom: 12),
-                                          padding: const EdgeInsets.all(16),
+                                          margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16),
                                           decoration: BoxDecoration(color: Colors.white.withOpacity(0.03), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.05))),
                                           child: Row(
                                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -511,10 +551,10 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                                 child: Column(
                                                   crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
-                                                    // 🚨 ADDED: Mosque icon injected into the UI string!
                                                     Text('${fund['fund_name']}${isShariah ? " 🕌" : ""}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700), maxLines: 2, overflow: TextOverflow.ellipsis),
                                                     const SizedBox(height: 6),
-                                                    Text('${fund['amc_name']}  •  Based on ${fund['mapped_stocks']} stocks', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                                                    // 🚨 REMOVED the "based on X stocks" text here!
+                                                    Text('${fund['amc_name']}', style: const TextStyle(color: Colors.white54, fontSize: 10)),
                                                   ],
                                                 ),
                                               ),
@@ -525,8 +565,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                                   Text('${isPositive ? '+' : ''}PKR ${_currencyFormat.format(estPkr.abs())}', style: TextStyle(color: pColor, fontSize: 15, fontWeight: FontWeight.bold)),
                                                   const SizedBox(height: 4),
                                                   Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(color: pColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: pColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
                                                     child: Text('${isPositive ? '+' : ''}${estPercent.toStringAsFixed(2)}%', style: TextStyle(color: pColor, fontSize: 10, fontWeight: FontWeight.bold)),
                                                   ),
                                                 ],
