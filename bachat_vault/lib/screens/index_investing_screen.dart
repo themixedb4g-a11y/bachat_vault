@@ -233,7 +233,7 @@ class _IndexInvestingScreenState extends State<IndexInvestingScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildField(label: 'Target Budget', prefix: 'PKR', suffix: '', controller: _amountController, isCurrency: true),
+                                  _buildField(label: 'Investment Value', prefix: 'PKR', suffix: '', controller: _amountController, isCurrency: true),
                                   const SizedBox(height: 16),
                                   Row(
                                     children: [
@@ -244,7 +244,7 @@ class _IndexInvestingScreenState extends State<IndexInvestingScreen> {
                                           value: _selectedIndex,
                                           items: const [
                                             DropdownMenuItem(value: 'KSE100', child: Text('KSE-100')),
-                                            DropdownMenuItem(value: 'KMI30', child: Text('KMI-30 (Islamic)')),
+                                            DropdownMenuItem(value: 'KMI30', child: Text('KMI-30')),
                                             DropdownMenuItem(value: 'PSXDIV20', child: Text('PSX DIV 20')),
                                           ],
                                           onChanged: (val) { if (val != null) { setState(() => _selectedIndex = val); _calculateAllocations(); } },

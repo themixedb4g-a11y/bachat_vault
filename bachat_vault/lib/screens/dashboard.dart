@@ -78,7 +78,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  // FIX 2: Added a helper function to catch and translate nasty network errors
   String _getFriendlyErrorMessage(dynamic error) {
     String errorString = error.toString();
     if (errorString.contains('CERTIFICATE_VERIFY_FAILED') || errorString.contains('HandshakeException')) {
@@ -92,8 +91,6 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> _fetchData() async {
     setState(() {
-      // FIX 3 (Sub-fix): Only show the full screen loading spinner if we don't have data yet.
-      // This prevents the screen from going blank when the user pulls down to refresh.
       if (_allFunds.isEmpty) {
         _isLoading = true;
       }
@@ -133,7 +130,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       'VPS-Shariah Compliant Commodities / Gold': 'VPS-Commodities',
       'VPS-Equity': 'VPS-Equity',
       'VPS-Shariah Compliant Equity': 'VPS-Equity',
-      // UPDATED: Dedicated Equity now correctly maps to Equity
       'Dedicated Equity': 'Equity',
       'Shariah Compliant Dedicated Equity': 'Equity',
     };
@@ -166,238 +162,64 @@ class _DashboardScreenState extends State<DashboardScreen>
     String _cleanFundName(String name) {
     return name
         .replaceAll('Exchange Traded Fund', 'ETF')
-        .replaceAll(
-          'NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan I)',
-          'NBP Islamic Principal Protection Plan I',
-        )
-        .replaceAll(
-          'NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan II)',
-          'NBP Islamic Principal Protection Plan II',
-        )
-        .replaceAll(
-          'NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan III)',
-          'NBP Islamic Principal Protection Plan III',
-        )
-        .replaceAll(
-          'NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan IV)',
-          'NBP Islamic Principal Protection Plan IV',
-        )
-        .replaceAll(
-          'Pak-Qatar Asset Allocation Plan I (PQAAP  IA)',
-          'Pak Qatar Asset Allocation Plan I',
-        )
-        .replaceAll(
-          'Pak-Qatar Asset Allocation Plan II (PQAAP  IIA)',
-          'Pak Qatar Asset Allocation Plan II',
-        )
-        .replaceAll(
-          'Pak-Qatar Asset Allocation Plan III (PQAAP  IIIA)',
-          'Pak Qatar Asset Allocation Plan III',
-        )
-        .replaceAll(
-          'Alhamra Opportunity Fund (Dividend Strategy Plan)',
-          'Alhamra Opportunity Fund',
-        )
-        .replaceAll(
-          'MCB Pakistan Opportunity Fund (MCB Pakistan  Dividend Yield Plan)',
-          'MCB Pakistan Opportunity Fund',
-        )
-        .replaceAll(
-          'JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)',
-          'JS Islamic Sarmaya Mehfooz Plan I',
-        )
-        .replaceAll(
-          'Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)',
-          'Faysal Islamic Sovereign Plan I',
-        )
-        .replaceAll(
-          'Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)',
-          'Faysal Islamic Sovereign Plan II',
-        )
-        .replaceAll(
-          "Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)",
-          "Faysal Nu'umah Women Savers Plan",
-        )
-        .replaceAll(
-          'Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)',
-          'Faysal Priority Ascend Plan I',
-        )
-        .replaceAll(
-          'Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)',
-          'Faysal Priority Ascend Plan II',
-        )
-        .replaceAll(
-          'Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)',
-          'Faysal Priority Ascend Plan III',
-        )
-        .replaceAll(
-          "Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)",
-          "Faysal Barak'ah Women Savers Plan",
-        )
-        .replaceAll(
-          'Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)',
-          'Faysal Shariah Flex Plan I',
-        )
-        .replaceAll(
-          'Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)',
-          'Faysal Shariah Flex Plan II',
-        )
-        .replaceAll(
-          'Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)',
-          'Faysal Shariah Flex Plan III',
-        )
-        .replaceAll(
-          'Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan I)',
-          'Faysal Islamic Financial Growth Plan I',
-        )
-        .replaceAll(
-          'Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan II)',
-          'Faysal Islamic Financial Growth Plan II',
-        )
-        .replaceAll(
-          'Atlas Islamic Fund of Funds (Atlas Aggressive Allocation Islamic Plan)',
-          'Atlas Islamic Fund of Funds (Aggressive)',
-        )
-        .replaceAll(
-          'Atlas Islamic Fund of Funds (Atlas Conservative Allocation Islamic Plan)',
-          'Atlas Islamic Fund of Funds (Conservative)',
-        )
-        .replaceAll(
-          'Atlas Islamic Fund of Funds (Atlas Moderate Allocation Islamic Plan)',
-          'Atlas Islamic Fund of Funds (Moderate)',
-        )
-        .replaceAll(
-          'Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Moderate Allocation Plan)',
-          'Alfalah GHP IPP Fund (Moderate)',
-        )
-        .replaceAll(
-          'Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Active Allocation Plan II)',
-          'Alfalah GHP IPP Fund (Active)',
-        )
-        .replaceAll(
-          'Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Balance Allocation Plan)',
-          'Alfalah GHP IPP Fund (Balance)',
-        )
-        .replaceAll(
-          'Alfalah GHP Prosperity Planning Fund (Alfalah GHP Active Allocation Plan)',
-          'Alfalah GHP PP Fund (Active)',
-        )
-        .replaceAll(
-          'Alfalah GHP Prosperity Planning Fund (Alfalah GHP Conservative Allocation Plan)',
-          'Alfalah GHP PP Fund (Conservative)',
-        )
-        .replaceAll(
-          'Alfalah GHP Prosperity Planning Fund (Capital Preservation Plan IV)',
-          'Alfalah GHP PP Fund (Capital Preservation Plan IV)',
-        )
-        .replaceAll(
-          'Alfalah GHP Prosperity Planning Fund (Alfalah GHP Moderate Allocation Plan)',
-          'Alfalah GHP PP Fund (Moderate)',
-        )
-        .replaceAll(
-          'Alfalah Financial Value Fund (Alfalah Financial Value Plan I)',
-          'Alfalah Financial Value Plan I',
-        )
-        .replaceAll(
-          'Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan I)',
-          'Alfalah Islamic Sovereign Plan I',
-        )
-        .replaceAll(
-          'Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan II)',
-          'Alfalah Islamic Sovereign Plan II',
-        )
-        .replaceAll(
-          'Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan III)',
-          'Alfalah Islamic Sovereign Plan III',
-        )
-        .replaceAll(
-          'Meezan Financial Planning Fund of Funds (Very Conservative Allocation Plan)',
-          'Meezan FP Fund of Funds (Very Conservative)',
-        )
-        .replaceAll(
-          'Meezan Financial Planning Fund of Funds (Moderate)',
-          'Meezan FP Fund of Funds (Moderate)',
-        )
-        .replaceAll(
-          'Meezan Financial Planning Fund of Funds (Conservative)',
-          'Meezan FP Fund of Funds (Conservative)',
-        )
-        .replaceAll(
-          'Meezan Financial Planning Fund of Funds (MAAP I)',
-          'Meezan FP Fund of Funds (MAAP-I)',
-        )
-        .replaceAll(
-          'Meezan Financial Planning Fund of Funds (Aggressive)',
-          'Meezan FP Fund of Funds (Aggressive)',
-        )
-        .replaceAll(
-          'Meezan Dynamic Asset Allocation Fund (Meezan Dividend Yield Plan)',
-          'Meezan Dynamic Asset Allocation Fund',
-        )
-        .replaceAll(
-          'Meezan Daily Income Fund (Meezan Mahana Munafa Plan)',
-          'Meezan Mahana Munafa Plan',
-        )
-        .replaceAll(
-          'Meezan Daily Income Fund (Meezan Munafa Plan I)',
-          'Meezan Munafa Plan I',
-        )
-        .replaceAll(
-          'Meezan Daily Income Fund (Meezan Sehl Account Plan) (MSHP)',
-          'Meezan Sehl Account Plan',
-        )
-        .replaceAll(
-          'Meezan Daily Income Fund (Meezan Super Saver Plan) (MSSP)',
-          'Meezan Super Saver Plan',
-        )
-        .replaceAll(
-          'Meezan Capital Protected Fund III (Meezan Capital Secure Plan I)',
-          'Meezan Capital Secure Plan I',
-        )
-        .replaceAll(
-          'ABL Islamic Financial Planning Fund (Conservative Allocation Plan)',
-          'ABL Islamic FP Fund (Conservative)',
-        )
-        .replaceAll(
-          'ABL Financial Planning Fund (Strategic Allocation Plan)',
-          'ABL FP Fund (Strategic Allocation Plan)',
-        )
-        .replaceAll(
-          'ABL Financial Planning Fund (Conservative Plan)',
-          'ABL Islamic FP Fund (Conservative)',
-        )
-        .replaceAll(
-          'ABL Islamic Financial Planning Fund (Active Allocation Plan)',
-          'ABL Islamic FP Fund (Active)',
-        )
-        .replaceAll(
-          'ABL Islamic Financial Planning Fund (Capital Preservation Plan I)',
-          'ABL Islamic FP Fund (Capital Preservation Plan I)',
-        )
-        .replaceAll(
-          'ABL Special Saving Fund (ABL Special Saving Plan I)',
-          'ABL Special Saving Plan I',
-        )
-        .replaceAll(
-          'ABL Special Saving Fund (ABL Special Saving Plan II)',
-          'ABL Special Saving Plan II',
-        )
-        .replaceAll(
-          'ABL Special Saving Fund (ABL Special Saving Plan III)',
-          'ABL Special Saving Plan III',
-        )
-        .replaceAll(
-          'ABL Special Saving Fund (ABL Special Saving Plan IV)',
-          'ABL Special Saving Plan IV',
-        )
-        .replaceAll(
-          'ABL Special Saving Fund (ABL Special Saving Plan V)',
-          'ABL Special Saving Plan V',
-        )
-        .replaceAll(
-          'ABL Special Saving Fund (ABL Special Saving Plan VI)',
-          'ABL Special Saving Plan VI',
-        )
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan I)', 'NBP Islamic Principal Protection Plan I')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan II)', 'NBP Islamic Principal Protection Plan II')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan III)', 'NBP Islamic Principal Protection Plan III')
+        .replaceAll('NBP Islamic Principal Protection Fund I (NBP Islamic Principal Protection Plan IV)', 'NBP Islamic Principal Protection Plan IV')
+        .replaceAll('Pak-Qatar Asset Allocation Plan I (PQAAP  IA)', 'Pak Qatar Asset Allocation Plan I')
+        .replaceAll('Pak-Qatar Asset Allocation Plan II (PQAAP  IIA)', 'Pak Qatar Asset Allocation Plan II')
+        .replaceAll('Pak-Qatar Asset Allocation Plan III (PQAAP  IIIA)', 'Pak Qatar Asset Allocation Plan III')
+        .replaceAll('Alhamra Opportunity Fund (Dividend Strategy Plan)', 'Alhamra Opportunity Fund')
+        .replaceAll('MCB Pakistan Opportunity Fund (MCB Pakistan  Dividend Yield Plan)', 'MCB Pakistan Opportunity Fund')
+        .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
+        .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
+        .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
+        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)", "Faysal Nu'umah Women Savers Plan")
+        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
+        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
+        .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
+        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)", "Faysal Barak'ah Women Savers Plan")
+        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
+        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
+        .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
+        .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan I)', 'Faysal Islamic Financial Growth Plan I')
+        .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan II)', 'Faysal Islamic Financial Growth Plan II')
+        .replaceAll('Atlas Islamic Fund of Funds (Atlas Aggressive Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Aggressive)')
+        .replaceAll('Atlas Islamic Fund of Funds (Atlas Conservative Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Conservative)')
+        .replaceAll('Atlas Islamic Fund of Funds (Atlas Moderate Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Moderate)')
+        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Moderate Allocation Plan)', 'Alfalah GHP IPP Fund (Moderate)')
+        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Active Allocation Plan II)', 'Alfalah GHP IPP Fund (Active)')
+        .replaceAll('Alfalah GHP Islamic Prosperity Planning Fund (Alfalah GHP Islamic Balance Allocation Plan)', 'Alfalah GHP IPP Fund (Balance)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Active Allocation Plan)', 'Alfalah GHP PP Fund (Active)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Conservative Allocation Plan)', 'Alfalah GHP PP Fund (Conservative)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Capital Preservation Plan IV)', 'Alfalah GHP PP Fund (Capital Preservation Plan IV)')
+        .replaceAll('Alfalah GHP Prosperity Planning Fund (Alfalah GHP Moderate Allocation Plan)', 'Alfalah GHP PP Fund (Moderate)')
+        .replaceAll('Alfalah Financial Value Fund (Alfalah Financial Value Plan I)', 'Alfalah Financial Value Plan I')
+        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan I)', 'Alfalah Islamic Sovereign Plan I')
+        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan II)', 'Alfalah Islamic Sovereign Plan II')
+        .replaceAll('Alfalah Islamic Sovereign Fund (Alfalah Islamic Sovereign Plan III)', 'Alfalah Islamic Sovereign Plan III')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Very Conservative Allocation Plan)', 'Meezan FP Fund of Funds (Very Conservative)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Moderate)', 'Meezan FP Fund of Funds (Moderate)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Conservative)', 'Meezan FP Fund of Funds (Conservative)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (MAAP I)', 'Meezan FP Fund of Funds (MAAP-I)')
+        .replaceAll('Meezan Financial Planning Fund of Funds (Aggressive)', 'Meezan FP Fund of Funds (Aggressive)')
+        .replaceAll('Meezan Dynamic Asset Allocation Fund (Meezan Dividend Yield Plan)', 'Meezan Dynamic Asset Allocation Fund')
+        .replaceAll('Meezan Daily Income Fund (Meezan Mahana Munafa Plan)', 'Meezan Mahana Munafa Plan')
+        .replaceAll('Meezan Daily Income Fund (Meezan Munafa Plan I)', 'Meezan Munafa Plan I')
+        .replaceAll('Meezan Daily Income Fund (Meezan Sehl Account Plan) (MSHP)', 'Meezan Sehl Account Plan')
+        .replaceAll('Meezan Daily Income Fund (Meezan Super Saver Plan) (MSSP)', 'Meezan Super Saver Plan')
+        .replaceAll('Meezan Capital Protected Fund III (Meezan Capital Secure Plan I)', 'Meezan Capital Secure Plan I')
+        .replaceAll('ABL Islamic Financial Planning Fund (Conservative Allocation Plan)', 'ABL Islamic FP Fund (Conservative)')
+        .replaceAll('ABL Financial Planning Fund (Strategic Allocation Plan)', 'ABL FP Fund (Strategic Allocation Plan)')
+        .replaceAll('ABL Financial Planning Fund (Conservative Plan)', 'ABL Islamic FP Fund (Conservative)')
+        .replaceAll('ABL Islamic Financial Planning Fund (Active Allocation Plan)', 'ABL Islamic FP Fund (Active)')
+        .replaceAll('ABL Islamic Financial Planning Fund (Capital Preservation Plan I)', 'ABL Islamic FP Fund (Capital Preservation Plan I)')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan I)', 'ABL Special Saving Plan I')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan II)', 'ABL Special Saving Plan II')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan III)', 'ABL Special Saving Plan III')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan IV)', 'ABL Special Saving Plan IV')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan V)', 'ABL Special Saving Plan V')
+        .replaceAll('ABL Special Saving Fund (ABL Special Saving Plan VI)', 'ABL Special Saving Plan VI')
         .replaceAll('Government', 'Govt.')
         .trim();
   }
@@ -436,21 +258,16 @@ class _DashboardScreenState extends State<DashboardScreen>
           orElse: () => <String, dynamic>{},
         );
 
-        // Grab the raw MUFAP data
         final rawCat = mf['category']?.toString().trim() ?? '';
         final rawAmc = mf['amc_name']?.toString().trim() ?? '';
         final rawName = mf['fund_name']?.toString() ?? 'Unknown';
 
         combined.add({
-          ...mf, // <-- This brings in the ORIGINAL long names so the Individual Page can use them!
-          
-          // --- THE TWO-KEY INJECTIONS (Short Names for the UI) ---
+          ...mf,
           'amc_name': amcMap[rawAmc] ?? rawAmc,
           'short_category': categoryMap[rawCat] ?? rawCat,
           'short_amc_name': amcMap[rawAmc] ?? rawAmc,
           'short_name': _cleanFundName(rawName),
-          // -------------------------------------------------------
-
           'return_1d': stats['return_1d'],
           'return_mtd': stats['return_mtd'],
           'return_30d': stats['return_30d'],
@@ -473,7 +290,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          // Pass the error to the new helper instead of spitting out raw text
           _errorMessage = _getFriendlyErrorMessage(e);
           _isLoading = false;
         });
@@ -482,19 +298,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   String _getGreetingText() {
-    final hour = DateTime.now().hour; // 24-hour format (0 to 23)
-
-    if (hour >= 5 && hour < 12) {
-      return 'Good Morning';   // 5:00 AM to 11:59 AM
-    } 
-    if (hour >= 12 && hour < 17) {
-      return 'Good Afternoon'; // 12:00 PM to 4:59 PM
-    } 
-    if (hour >= 17 && hour < 22) {
-      return 'Good Evening';   // 5:00 PM to 9:59 PM
-    } 
-    
-    // This catches everything else: 11:00 PM (23) and Midnight to 4:59 AM (0, 1, 2, 3, 4)
+    final hour = DateTime.now().hour;
+    if (hour >= 5 && hour < 12) return 'Good Morning';
+    if (hour >= 12 && hour < 17) return 'Good Afternoon';
+    if (hour >= 17 && hour < 22) return 'Good Evening';
     return 'Good Night'; 
   }
 
@@ -510,7 +317,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     List<String> categories,
     String sortKey,
   ) {
-    // 1. Initial Filter
     var filtered = _allFunds.where((f) {
       final cat = f['short_category']?.toString().trim() ?? '';
       final ticker = f['ticker']?.toString().trim() ?? ''; 
@@ -519,7 +325,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     
     if (filtered.isEmpty) return [];
 
-    // 2. Find the absolute latest date
     DateTime? latestDate;
     for (var f in filtered) {
       final dStr = f['last_validity_date']?.toString() ?? "";
@@ -531,16 +336,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       } catch (_) {}
     }
 
-    // 3. The "Smart Weekend" Filter
     if (latestDate != null) {
-      // Default to 1 day for normal weekdays (e.g., Wed keeps Wed & Tue. Drops Mon.)
       int allowedDaysBack = 1; 
-      
-      // DateTime weekdays: Monday=1, Tuesday=2... Saturday=6, Sunday=7
       if (latestDate.weekday == DateTime.monday) {
-        allowedDaysBack = 3; // Reaches exactly back to Friday, drops Thursday
+        allowedDaysBack = 3; 
       } else if (latestDate.weekday == DateTime.sunday) {
-        allowedDaysBack = 2; // Reaches back to Friday, drops Thursday
+        allowedDaysBack = 2; 
       }
 
       filtered = filtered.where((f) {
@@ -548,7 +349,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         try {
           final fundDate = DateTime.parse(dStr);
           final difference = latestDate!.difference(fundDate).inDays.abs();
-          
           return difference <= allowedDaysBack; 
         } catch (_) {
           return false;
@@ -556,7 +356,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       }).toList();
     }
 
-    // 4. Sort strictly by return
     filtered.sort((a, b) {
       final valA = (a[sortKey] as num).toDouble();
       final valB = (b[sortKey] as num).toDouble();
@@ -604,7 +403,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(20), // Reduced from 24
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white.withOpacity(0.1)),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -617,16 +416,16 @@ class _DashboardScreenState extends State<DashboardScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(title, style: const TextStyle(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-            const SizedBox(height: 12), // Reduced gap
+            const SizedBox(height: 12),
             if (topFunds.isEmpty)
               const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: Text("No funds available.", style: TextStyle(color: Colors.white54))))
             else
               ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                padding: EdgeInsets.zero, // Removes default ListView padding
+                padding: EdgeInsets.zero,
                 itemCount: topFunds.length,
-                separatorBuilder: (context, index) => const Divider(color: Colors.white12, height: 16), // Reduced divider height
+                separatorBuilder: (context, index) => const Divider(color: Colors.white12, height: 16),
                 itemBuilder: (context, index) {
                   final fund = topFunds[index];
                   final name = fund['short_name'] ?? fund['fund_name']?.toString() ?? 'Unknown';
@@ -715,10 +514,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // ============================================================================
-  // MARKET OVERVIEW SECTION (Repaired Logic & Fallbacks)
-  // ============================================================================
-
   Widget _buildMarketCard(
     String title,
     String subtitle,
@@ -727,7 +522,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     String tickerKey,
     String dbKey,
   ) {
-    // Find the real benchmark data from your database!
     final fund = _allFunds.firstWhere(
       (f) => f['ticker'] == tickerKey,
       orElse: () => {},
@@ -751,25 +545,25 @@ class _DashboardScreenState extends State<DashboardScreen>
         Navigator.push(context, MaterialPageRoute(builder: (context) => FundDetailsScreen(fund: fund, investmentAmount: _investmentAmount, benchmarkStats: _benchmarkStats)));
       },
       child: Container(
-        width: 105, // Slightly narrower
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), // Massive padding reduction here
+        width: 105, 
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), 
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(12), // Tighter corners
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withOpacity(0.1)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min, // Ensures it wraps tightly
+          mainAxisSize: MainAxisSize.min, 
           children: [
             Row(
               children: [
-                Icon(icon, color: color, size: 12), // Smaller icon
+                Icon(icon, color: color, size: 12),
                 const SizedBox(width: 4),
                 Text(title, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
               ],
             ),
-            const SizedBox(height: 4), // Tighter gap
+            const SizedBox(height: 4), 
             Text(
               displayProfit,
               style: TextStyle(color: statColor, fontSize: 12, fontWeight: FontWeight.w800, overflow: TextOverflow.ellipsis),
@@ -784,29 +578,29 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildMarketOverviewSection(String dbKey) { // Removed periodLabel parameter
+  Widget _buildMarketOverviewSection(String dbKey) { 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 24.0),
           child: Text(
-            'Market Benchmarks', // Removed the dynamic (1Y) text
+            'Market Benchmarks', 
             style: TextStyle(
               color: Colors.white,
-              fontSize: 16, // Slightly tighter font size
+              fontSize: 16, 
               fontWeight: FontWeight.bold,
               letterSpacing: 1,
             ),
           ),
         ),
-        const SizedBox(height: 12), // Tighter gap
+        const SizedBox(height: 12), 
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
           child: Container(
             constraints: BoxConstraints(
-              minWidth: MediaQuery.of(context).size.width,
+              minWidth: math.min(MediaQuery.of(context).size.width, 480.0), // <-- Use constrained width here too
             ),
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Row(
@@ -824,7 +618,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       ],
     );
   }
-  // ============================================================================
 
   Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap) {
     return ListTile(
@@ -850,9 +643,11 @@ class _DashboardScreenState extends State<DashboardScreen>
         ? 'return_3y'
         : 'return_1y';
 
-    final double screenWidth = MediaQuery.of(context).size.width;
-    final double cardWidth = screenWidth * 0.90; 
-    final double sidePadding = (screenWidth - cardWidth) / 2;
+    // 👇 THIS IS THE FIX 👇
+    // We cap the maximum width at 480 to respect the web constraint.
+    final double effectiveScreenWidth = math.min(MediaQuery.of(context).size.width, 480.0);
+    final double cardWidth = effectiveScreenWidth * 0.90; 
+    final double sidePadding = (effectiveScreenWidth - cardWidth) / 2;
 
     return Theme(
       data: Theme.of(context).copyWith(
@@ -902,8 +697,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ],
                 ),
               ),
-
-              // 1. THE NEW EXPANDABLE INVESTMENT GUIDE MENU
               Theme(
                 data: Theme.of(
                   context,
@@ -927,7 +720,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   childrenPadding: const EdgeInsets.only(
                     left: 54,
                     bottom: 8,
-                  ), // Indents the sub-items perfectly to align with the text
+                  ), 
                   children: [
                     ListTile(
                       dense: true,
@@ -937,9 +730,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         style: TextStyle(color: Colors.white70, fontSize: 13),
                       ),
                       onTap: () {
-                        // Closes the drawer first
                         Navigator.pop(context);
-                        // Navigates to the new screen
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -957,7 +748,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         style: TextStyle(color: Colors.white70, fontSize: 13),
                       ),
                       onTap: () {
-                        Navigator.pop(context); // Close the drawer
+                        Navigator.pop(context); 
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -974,7 +765,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         style: TextStyle(color: Colors.white70, fontSize: 13),
                       ),
                       onTap: () {
-                        Navigator.pop(context); // Close the drawer
+                        Navigator.pop(context); 
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -991,7 +782,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         style: TextStyle(color: Colors.white70, fontSize: 13),
                       ),
                       onTap: () {
-                        Navigator.pop(context); // Close the drawer
+                        Navigator.pop(context); 
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -1008,7 +799,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         style: TextStyle(color: Colors.white70, fontSize: 13),
                       ),
                       onTap: () {
-                        Navigator.pop(context); // Close the drawer
+                        Navigator.pop(context); 
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -1064,16 +855,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                   'https://www.facebook.com/groups/2125880957874842',
                 ),
               ),
-              
-              // UPDATED: WhatsApp Group is now WhatsApp Community!
               _buildDrawerItem(
-                Icons.forum_rounded, // Changed to a nice forum/community icon
+                Icons.forum_rounded, 
                 'WhatsApp Community',
                 () => _launchURL(
-                  'https://chat.whatsapp.com/DRjEqXeB6zSF1KyFNZhXAC', // <-- PASTE YOUR NEW LINK HERE
+                  'https://chat.whatsapp.com/DRjEqXeB6zSF1KyFNZhXAC', 
                 ),
               ),
-              
               _buildDrawerItem(
                 Icons.campaign_rounded,
                 'WhatsApp Channel',
@@ -1093,7 +881,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
               const Divider(color: Colors.white12),
               _buildDrawerItem(Icons.gavel_rounded, 'Terms & Conditions', () {
-                Navigator.pop(context); // Close the drawer
+                Navigator.pop(context); 
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -1102,15 +890,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                 );
               }),
               _buildDrawerItem(Icons.security_rounded, 'Privacy Policy', () {
-                // Replace this URL with your actual Google Sites link!
                 launchUrl(
                   Uri.parse(
                     'https://sites.google.com/view/bachatvault-privacy',
                   ),
                 );
               }),
-
-              // New Feedback & Support Launcher
               _buildDrawerItem(
                 Icons.email_outlined,
                 'Feedback & Support',
@@ -1118,17 +903,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                   final Uri emailLaunchUri = Uri(
                     scheme: 'mailto',
                     path:
-                        'themixedb4g@gmail.com', // 👉 CHANGE THIS TO YOUR GMAIL
+                        'themixedb4g@gmail.com', 
                     query: 'subject=Bachat Vault App Feedback',
                   );
-                  // Make sure to import 'package:url_launcher/url_launcher.dart'; at the top of your file!
                   launchUrl(emailLaunchUri);
                 },
               ),
-
               const SizedBox(
                 height: 24,
-              ), // Gives a little breathing room at the bottom of the scroll
+              ), 
             ],
           ),
         ),
@@ -1151,13 +934,9 @@ class _DashboardScreenState extends State<DashboardScreen>
           centerTitle: false,
           backgroundColor: Colors.transparent,
           elevation: 0,
-          
-          // FIX 3: Removed the manual refresh button to support modern "Pull to Refresh"
           actions: const [
-            // Top right corner can be used for profile login in the future.
             SizedBox(width: 48), 
           ],
-          
           flexibleSpace: ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -1176,7 +955,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
           child: SafeArea(
-            // FIX 3: Wrapped the entire main body in a RefreshIndicator
             child: RefreshIndicator(
               color: Colors.tealAccent,
               backgroundColor: const Color(0xFF1E293B),
@@ -1186,9 +964,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       child: CircularProgressIndicator(color: Colors.tealAccent),
                     )
                   : _errorMessage != null
-                      // FIX 2: Beautiful integrated Error Screen instead of tiny red text
                       ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(), // Important: allows pull-to-refresh even when empty/error
+                          physics: const AlwaysScrollableScrollPhysics(), 
                           children: [
                             SizedBox(height: MediaQuery.of(context).size.height * 0.3),
                             const Icon(Icons.wifi_off_rounded, color: Colors.white54, size: 64),
@@ -1204,23 +981,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ],
                         )
                       : SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(), // Important: allows pull-to-refresh
+                          physics: const AlwaysScrollableScrollPhysics(), 
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // 1. Tighter top spacing
                             const SizedBox(height: 12), 
                             const Center(
                               child: Text(
                                 'Your Investment Value',
                                 style: TextStyle(
                                   color: Colors.white70,
-                                  fontSize: 13, // Slightly smaller
+                                  fontSize: 13, 
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
-                            // 2. Removed the massive vertical: 4 padding on the TextField
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 40),
                               child: Center(
@@ -1232,9 +1007,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 32, // Slightly smaller to fit better
+                                      fontSize: 32, 
                                       fontWeight: FontWeight.w800,
-                                      height: 1.2, // Tighter line height
+                                      height: 1.2, 
                                     ),
                                     decoration: const InputDecoration(
                                       prefixText: 'PKR ',
@@ -1244,8 +1019,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         fontWeight: FontWeight.w700,
                                       ),
                                       border: InputBorder.none,
-                                      isDense: true, // Forces the textfield to shrink-wrap its content
-                                      contentPadding: EdgeInsets.zero, // Removes hidden default padding
+                                      isDense: true, 
+                                      contentPadding: EdgeInsets.zero, 
                                     ),
                                     onChanged: (val) {
                                       setState(() {
@@ -1257,32 +1032,29 @@ class _DashboardScreenState extends State<DashboardScreen>
                               ),
                             ),
                             
-                            const SizedBox(height: 8), // Tight gap to filters
+                            const SizedBox(height: 8), 
 
-                            // 3. Filter Buttons
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 _buildDashFilterBtn('30D'),
-                                const SizedBox(width: 8), // Tighter gap between buttons
+                                const SizedBox(width: 8), 
                                 _buildDashFilterBtn('1Y'),
                                 const SizedBox(width: 8),
                                 _buildDashFilterBtn('3Y'),
                               ],
                             ),
                             
-                            const SizedBox(height: 16), // Gap before Benchmarks
+                            const SizedBox(height: 16), 
 
-                            // 4. Benchmarks Moved UP and made compact
                             _buildMarketOverviewSection(dbSortKey),
 
-                            const SizedBox(height: 16), // Gap before Top 5 Cards
+                            const SizedBox(height: 16), 
 
                             // --- TOP 5 CARDS (DYNAMIC HEIGHT CAROUSEL) ---
                             SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               physics: const BouncingScrollPhysics(),
-                              // Apply the dynamic padding here:
                               padding: EdgeInsets.symmetric(horizontal: sidePadding), 
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1291,12 +1063,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     width: cardWidth,
                                     child: _buildTop5Card('Top 5 Equity Funds', ['Equity'], dbSortKey),
                                   ),
-                                  const SizedBox(width: 12), // Explicit, clean gap between cards
+                                  const SizedBox(width: 12), 
                                   SizedBox(
                                     width: cardWidth,
                                     child: _buildTop5Card('Top 5 ETFs', ['Exchange Traded Fund'], dbSortKey),
                                   ),
-                                  const SizedBox(width: 12), // Explicit, clean gap between cards
+                                  const SizedBox(width: 12), 
                                   SizedBox(
                                     width: cardWidth,
                                     child: _buildTop5Card('Top 5 Money Market', ['Money Market'], dbSortKey),
@@ -1306,7 +1078,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                             ),
                             const SizedBox(height: 16),
 
-                              // --- 1st Button: Explore Full Performance ---
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                                 child: InkWell(
@@ -1361,9 +1132,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 ),
                               ),
                               
-                              const SizedBox(height: 16), // Spacing between the buttons
+                              const SizedBox(height: 16), 
 
-                              // --- 2nd Button: Live Fund Estimation ---
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                                 child: InkWell(
@@ -1380,7 +1150,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     width: double.infinity,
                                     padding: const EdgeInsets.symmetric(vertical: 16),
                                     decoration: BoxDecoration(
-                                      // Using the exact same matching gradient and design
                                       gradient: const LinearGradient(
                                         colors: [Colors.tealAccent, Colors.teal],
                                         begin: Alignment.topLeft,
@@ -1399,7 +1168,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
                                         Icon(
-                                          Icons.bolt_rounded, // Lightning icon to signify "Live"
+                                          Icons.bolt_rounded, 
                                           color: Colors.black87,
                                         ),
                                         SizedBox(width: 8),

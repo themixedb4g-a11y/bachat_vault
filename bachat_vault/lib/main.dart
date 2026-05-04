@@ -1,3 +1,5 @@
+import 'dart:ui'; 
+import 'package:flutter/gestures.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,7 +10,7 @@ import 'screens/main_layout.dart';
 import 'package:bachat_vault/screens/splash_screen.dart';
 import 'screens/force_update_screen.dart';
 
-// --- HELPER FUNCTION TO COMPARE VERSIONS (e.g., "1.0.5" vs "1.1.0") ---
+// --- HELPER FUNCTION TO COMPARE VERSIONS ---
 bool isUpdateRequired(String currentVersion, String minVersion) {
   List<int> currentParts = currentVersion.split('.').map(int.parse).toList();
   List<int> minParts = minVersion.split('.').map(int.parse).toList();
@@ -16,17 +18,24 @@ bool isUpdateRequired(String currentVersion, String minVersion) {
   for (int i = 0; i < 3; i++) {
     int c = currentParts.length > i ? currentParts[i] : 0;
     int m = minParts.length > i ? minParts[i] : 0;
-    if (c < m) return true; // App is older than minimum requirement
-    if (c > m) return false; // App is newer than minimum requirement
+    if (c < m) return true; 
+    if (c > m) return false; 
   }
-  return false; // Exactly the same version
+  return false; 
+}
+
+// --- FIX FOR DESKTOP MOUSE SWIPING ---
+class AppScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse, 
+        PointerDeviceKind.trackpad,
+      };
 }
 
 Future<void> main() async {
-  // 1. Capture the widget binding
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
-  
-  // 2. Tell Flutter to HOLD the splash screen on the screen
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   
   await dotenv.load(fileName: ".env");
@@ -39,7 +48,6 @@ Future<void> main() async {
   bool needsUpdate = false;
   String playStoreUrl = '';
 
-  // 3. SECURE BACKGROUND VERSION CHECK
   try {
     PackageInfo packageInfo = await PackageInfo.fromPlatform();
     String currentVersion = packageInfo.version;
@@ -56,13 +64,9 @@ Future<void> main() async {
     needsUpdate = isUpdateRequired(currentVersion, minVersion);
   } catch (e) {
     debugPrint("Version check failed or offline: $e");
-    // Failsafe: Let them in if the internet is down so the app doesn't brick
   }
 
-  // 4. Force a 2-second delay so users see the logo
   await Future.delayed(const Duration(seconds: 2));
-  
-  // 5. Remove the splash screen just before running the app
   FlutterNativeSplash.remove();
 
   runApp(MyApp(needsUpdate: needsUpdate, playStoreUrl: playStoreUrl));
@@ -83,16 +87,28 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Bachat Vault',
+      scrollBehavior: AppScrollBehavior(), 
       theme: ThemeData.dark().copyWith(
         colorScheme: const ColorScheme.dark(
           primary: Colors.teal,
           secondary: Colors.tealAccent,
         ),
       ),
-      // THE KILL SWITCH ROUTER:
+      // --- GLOBAL WEB RESPONSIVE WRAPPER ---
+      builder: (context, child) {
+        return Container(
+          color: const Color(0xFF0F172A), 
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: child!, 
+            ),
+          ),
+        );
+      },
       home: needsUpdate 
           ? ForceUpdateScreen(playStoreUrl: playStoreUrl) 
-          : const SplashScreen(), // Keeps your original flow intact if no update is needed
+          : const MainLayout(), 
     );
   }
 }

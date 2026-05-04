@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:auto_size_text/auto_size_text.dart';
 
 class FundDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> fund;
@@ -100,7 +101,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       List<dynamic> indexData = List.from(responses[2] as List<dynamic>);
       List<dynamic> goldData = List.from(responses[3] as List<dynamic>);
 
-      // --- THE UNIVERSAL "COMMON DENOMINATOR" FIX ---
       List<DateTime> startDates = [];
       
       if (fundData.isNotEmpty) startDates.add(DateTime.parse(fundData.first['validity_date'].toString()));
@@ -115,7 +115,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         goldData.removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
         payoutData.removeWhere((row) => DateTime.parse(row['payout_date'].toString()).isBefore(commonStartDate));
       }
-      // -----------------------------------------------
 
       List<FlSpot> fundSpots = [];
       double startNav = 1.0; 
@@ -194,13 +193,12 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     }
   }
 
-  // --- FUND HOLDINGS ENGINE (TOP 10 COMPANIES + OTHERS/CASH + DELTA) ---
+  // --- FUND HOLDINGS ENGINE ---
   Future<void> _loadHoldingsData() async {
     try {
       final supabase = Supabase.instance.client;
       final String ticker = widget.fund['ticker']?.toString().trim().toUpperCase() ?? '';
 
-      // 1. Get the Current Month Date (Using EXACT string from DB)
       final dateResponse = await supabase.from('fund_holdings')
           .select('fmr_date').eq('fund_ticker', ticker).order('fmr_date', ascending: false).limit(1);
           
@@ -209,14 +207,12 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         return;
       }
       
-      // We now use the exact raw string from the database to prevent truncation issues
       String latestDate = dateResponse.first['fmr_date'].toString(); 
 
-      // 2. Get the Previous Month Date (SAFER QUERY: Using .neq instead of .lt)
       final prevDateResponse = await supabase.from('fund_holdings')
           .select('fmr_date')
           .eq('fund_ticker', ticker)
-          .neq('fmr_date', latestDate) // Grabs the next most recent date that isn't the current one
+          .neq('fmr_date', latestDate) 
           .order('fmr_date', ascending: false)
           .limit(1);
       
@@ -225,7 +221,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         previousDate = prevDateResponse.first['fmr_date'].toString();
       }
 
-      // 3. Fetch BOTH current and previous holdings simultaneously
       var futures = <Future>[
         supabase.from('fund_holdings').select('stock_ticker, holding_percentage').eq('fund_ticker', ticker).eq('fmr_date', latestDate)
       ];
@@ -242,7 +237,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         return;
       }
 
-      // Map the previous month's holdings for fast lookup
       Map<String, double> prevHoldingsMap = {};
       for (var p in prevHoldingsResponse) {
         prevHoldingsMap[p['stock_ticker'].toString().trim()] = double.tryParse(p['holding_percentage'].toString()) ?? 0.0;
@@ -262,7 +256,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         String sTicker = holding['stock_ticker'].toString().trim();
         double percent = double.tryParse(holding['holding_percentage'].toString()) ?? 0.0;
         
-        // Calculate Delta 
         double? delta;
         if (previousDate != null) {
           double prevPercent = prevHoldingsMap[sTicker] ?? 0.0; 
@@ -276,7 +269,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         
         String name = stockMeta['company_name'].toString();
         
-        // Clean up names and separate them into buckets
         if (sTicker == 'CASH') {
           cashHoldings = {'ticker': sTicker, 'name': 'Cash & Equivalents', 'percentage': percent, 'delta': delta};
         } else if (sTicker == 'OTHER') {
@@ -286,13 +278,9 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         }
       }
 
-      // 1. Sort the REAL companies by highest percentage
       realCompanies.sort((a, b) => (b['percentage'] as double).compareTo(a['percentage'] as double));
-      
-      // 2. Take exactly the Top 10 real companies
       List<Map<String, dynamic>> finalHoldings = realCompanies.take(10).toList();
 
-      // 3. Append the muted categories strictly at the bottom
       if (otherHoldings != null && (otherHoldings['percentage'] as double) > 0) finalHoldings.add(otherHoldings);
       if (cashHoldings != null && (cashHoldings['percentage'] as double) > 0) finalHoldings.add(cashHoldings);
 
@@ -300,7 +288,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         setState(() {
           DateTime? parsedDate;
           try {
-             // Handle standard format for the UI header safely
              parsedDate = DateTime.tryParse(latestDate.length >= 10 ? latestDate.substring(0, 10) : latestDate);
           } catch (_) {}
           
@@ -316,7 +303,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     }
   }
 
-  // --- DELTA UI BUILDER (UPGRADED) ---
   Widget _buildDeltaIndicator(double? delta) {
     if (delta == null) {
       return Container(
@@ -358,7 +344,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     );
   }
 
-  // --- EXISTING HELPERS ---
   bool _isPeriodValid(String? inceptionDateStr, int requiredDays) {
     if (inceptionDateStr == null || inceptionDateStr.isEmpty) return true;
     DateTime? incDate = DateTime.tryParse(inceptionDateStr);
@@ -452,11 +437,37 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     );
   }
 
+  // 👇 THE FIX: Removed IntrinsicHeight complexity and added a fixed height to guarantee symmetry! 👇
   Widget _buildInfoPill(String title, String value) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.1))),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600)), const SizedBox(height: 4), Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis)]),
+        height: 68, // This magic number ensures ALL containers are perfectly symmetrical across all devices!
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.1))
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center, // Keeps the text perfectly centered vertically
+          children: [
+            AutoSizeText(
+              title,
+              style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600),
+              maxLines: 1,
+              minFontSize: 8,
+            ),
+            const SizedBox(height: 4),
+            AutoSizeText(
+              value,
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+              maxLines: 1,
+              minFontSize: 9,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -711,7 +722,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                               ],
                             ),
                           ),
-                          // 🚨 THIS IS THE CRITICAL FIX: Calling _buildDeltaIndicator to draw on the UI!
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -802,8 +812,11 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
+                  
+                  // 👇 THE FIX: Reverted to standard Rows because our new 68px containers handle the layout safely! 👇
                   Row(children: [_buildInfoPill('Category', category.toString()), const SizedBox(width: 12), _buildInfoPill('Risk Profile', risk.toString())]), const SizedBox(height: 12),
                   Row(children: [_buildInfoPill('Inception Date', incDateStr), const SizedBox(width: 12), _buildInfoPill('TER (MTD)', terMtd), const SizedBox(width: 12), _buildInfoPill('TER (YTD)', terYtd)]), 
+                  
                   const SizedBox(height: 32),
                   
                   if (!_isChartExpanded)

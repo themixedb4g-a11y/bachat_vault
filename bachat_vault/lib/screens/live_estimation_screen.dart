@@ -202,7 +202,9 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
         String cleanAmc = amcMap[rawAmc] ?? rawAmc;
         String cleanName = _cleanFundName(rawName);
 
-        if (cleanCat == 'Crypto' || rawCat.toUpperCase().contains('VPS') || cleanCat.toUpperCase().contains('VPS')) continue;
+        // 🚨 NEW RESTRICTION: Only allow Equity-heavy categories (already cleanly shortened by categoryMap)
+        List<String> allowedCategories = ['Equity', 'Asset Allocation', 'Balanced', 'VPS-Equity'];
+        if (!allowedCategories.contains(cleanCat)) continue;
 
         cleanedMasterFunds.add({
           ...fund,
@@ -275,7 +277,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
     bool isHoliday = holidaysData.any((h) => h['holiday_date'].toString() == todayStr);
 
     void setStatus(bool isOpen) {
-      _marketStatusText = isOpen ? 'Market ON' : 'Market OFF';
+      _marketStatusText = isOpen ? 'Market: ON' : 'Market: OFF';
       _marketStatusColor = isOpen ? Colors.greenAccent : Colors.redAccent;
     }
 
@@ -487,7 +489,6 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                   ),
                                   const SizedBox(height: 24),
                                   
-                                  // 🚨 NEW: THE MARKET STATUS BADGE!
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
@@ -553,7 +554,6 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                                   children: [
                                                     Text('${fund['fund_name']}${isShariah ? " 🕌" : ""}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700), maxLines: 2, overflow: TextOverflow.ellipsis),
                                                     const SizedBox(height: 6),
-                                                    // 🚨 REMOVED the "based on X stocks" text here!
                                                     Text('${fund['amc_name']}', style: const TextStyle(color: Colors.white54, fontSize: 10)),
                                                   ],
                                                 ),
