@@ -13,7 +13,6 @@ import yfinance as yf
 import functions_framework
 import fmr_scraper
 import ubl_scraper
-from dotenv import load_dotenv
 
 session = requests.Session()
 session.headers.update(
@@ -25,13 +24,19 @@ session.headers.update(
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 1. CONNECTION ---
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass  # Google Cloud ignores this safely!
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ ERROR: Supabase Keys are missing from Environment Variables!")
-    sys.exit(1)
+    raise ValueError("❌ Connection Error: Keys missing.")
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- 2. PRE-FETCH DATA & SETTINGS ---
