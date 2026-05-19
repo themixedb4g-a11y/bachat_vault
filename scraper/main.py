@@ -1223,10 +1223,10 @@ def sync_mufap_aum():
         for row in soup.find_all("tr"):
             cells = row.find_all("td")
 
-            # 🚨 THE FIX: MUFAP AUM table only has 5 columns, not 6!
-            if len(cells) >= 5:
-                raw_fund_name = cells[1].get_text(strip=True)
-                raw_aum = cells[4].get_text(strip=True).replace(",", "")
+            # 🚨 THE FIX: Table has 6 columns. Fund Name is Index 2, AUM is Index 5.
+            if len(cells) >= 6:
+                raw_fund_name = cells[2].get_text(strip=True)
+                raw_aum = cells[5].get_text(strip=True).replace(",", "")
 
                 if (
                     not raw_fund_name
@@ -1253,6 +1253,8 @@ def sync_mufap_aum():
                 final_batch, on_conflict="ticker"
             ).execute()
             print(f"   ✅ {len(final_batch)} AUM stats synced for {target_month}.")
+        else:
+            print(f"   ⚠️ No AUM data matched for {target_month}. Check MUFAP website.")
 
     except Exception as e:
         print(f"   ❌ MUFAP AUM Error: {e}")
@@ -1366,5 +1368,3 @@ def run_scraper(request):
         print(f"   ⚠️ Could not trigger Brain securely: {e}")
 
     return completion_msg, 200
-
-    # Final Sync
