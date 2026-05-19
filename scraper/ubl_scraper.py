@@ -6,21 +6,25 @@ import urllib3
 from bs4 import BeautifulSoup
 from thefuzz import process
 from supabase import create_client, Client
-from dotenv import load_dotenv
 
 # Mute the SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- 1. SUPABASE CONNECTION ---
-load_dotenv()
+# --- 1. CONNECTION ---
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass  # Google Cloud ignores this safely!
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ ERROR: Supabase Keys are missing from Environment Variables!")
-    exit(1)
+    raise ValueError("❌ Connection Error: Keys missing.")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- 2. CONFIGURATION ---
 FMR_DATE = "2026-04-30"
