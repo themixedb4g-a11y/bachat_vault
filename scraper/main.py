@@ -1218,7 +1218,6 @@ def sync_mufap_aum():
         soup = BeautifulSoup(session.get(url, verify=False, timeout=20).text, "lxml")
 
         # Build a dictionary for Fuzzy Matching
-        # (Prioritizes fund_name, falls back to amc_website_name)
         db_funds = {}
         for r in master_res.data:
             name = r.get("fund_name") or r.get("amc_website_name") or r["ticker"]
@@ -1229,16 +1228,20 @@ def sync_mufap_aum():
 
         for row in soup.find_all("tr"):
             cells = row.find_all("td")
-            if len(cells) >= 6:
-                raw_fund_name = cells[2].get_text(strip=True)
-                raw_aum = cells[5].get_text(strip=True).replace(",", "")
+            
+            # 🚨 FIX: MUFAP AUM table only has 5 columns.
+            if len(cells) >= 5:
+                # Index 1 is Fund Name, Index 4 is AUM
+                raw_fund_name = cells[1].get_text(strip=True)
+                raw_aum = cells[4].get_text(strip=True).replace(",", "")
 
-                # Skip headers and empty rows
+                # Skip headers, empty rows, and "Not Published" funds
                 if (
                     not raw_fund_name
                     or raw_fund_name.lower() == "fund name"
                     or not raw_aum
                     or raw_aum == "-"
+                    or raw_aum.lower() == "not published"
                 ):
                     continue
 
