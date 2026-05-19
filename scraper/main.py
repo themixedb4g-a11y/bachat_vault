@@ -444,97 +444,92 @@ def sync_mufap_master():
             if (
                 "Exchange Traded Fund" in str(category)
                 and FUND_LOGIC_MAP.get(ticker) != "Annualized"
-        ):
-            psx_exclusive_etfs.add(ticker)
+            ):
+                psx_exclusive_etfs.add(ticker)
 
-    # MUFAP now acts as a safety net for ALL funds.
-    excluded_tickers = psx_exclusive_etfs
+        # MUFAP now acts as a safety net for ALL funds.
+        excluded_tickers = psx_exclusive_etfs
 
-    target_ids = {
-        str(int(float(row["fund_id_mufap"])))
-        for row in master_res.data
-        if row.get("fund_id_mufap") and row["ticker"] not in excluded_tickers
-    }
-    id_to_ticker = {
-        str(int(float(row["fund_id_mufap"]))): row["ticker"]
-        for row in master_res.data
-        if row.get("fund_id_mufap") and row["ticker"] not in excluded_tickers
-    }
-
-    # --- THE DELTA URL LOGIC ---
-    now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
-    datetill = (now_pk + timedelta(days=4)).strftime("%Y-%m-%d")
-    datefrom = (now_pk - timedelta(days=5)).strftime("%Y-%m-%d")
-
-    url_present = "https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=3"
-    url_window = f"https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=3&AMCId=null&fundId=null&datefrom={datefrom}&datetill={datetill}"
-
-    batch = []
-    
-    # Loop through both URLs to fill the batch
-    for mufap_url in [url_present, url_window]:
-        try:
-            soup = BeautifulSoup(
-                session.get(
-                    mufap_url,
-                    verify=False,
-                    timeout=25,
-                ).text,
-                "lxml",
-            )
-            for row in soup.find_all("tr"):
-                cells = row.find_all("td")
-                if len(cells) < 9:
-                    continue
-                link = cells[2].find("a", href=True)
-                if link:
-                    m_id = re.search(r"FundID=(\d+)", link["href"]).group(1)
-                    if m_id in target_ids:
-                        ticker = id_to_ticker[m_id]
-                        try:
-                            dt_str = datetime.strptime(
-                                cells[8].text.strip().title(), "%b %d, %Y"
-                            ).strftime("%Y-%m-%d")
-
-                            # --- ENFORCING RULE 1 (Annualized Funds Only) ---
-                            ticker_logic = FUND_LOGIC_MAP.get(ticker, "Absolute")
-                            if ticker_logic != "Annualized":
-                                parsed_date = datetime.strptime(dt_str, "%Y-%m-%d").date()
-                                days_diff = (now_pk.date() - parsed_date).days
-                                if days_diff > 1:
-                                    continue
-
-                            if is_valid_date(dt_str, ticker):
-                                batch.append(
-                                    {
-                                        "ticker": ticker,
-                                        "nav": float(cells[7].text.replace(",", "")),
-                                        "validity_date": dt_str,
-                                        "source": "MUFAP",
-                                    }
-                                )
-                        except:
-                            continue
-        except Exception as e:
-            print(f"   ❌ MUFAP Error on {mufap_url}: {e}")
-
-    if batch:
-        # Deduplicate the combined batch before pushing to Supabase
-        unique_batch = {
-            (item["ticker"], item["validity_date"]): item for item in batch
+        target_ids = {
+            str(int(float(row["fund_id_mufap"])))
+            for row in master_res.data
+            if row.get("fund_id_mufap") and row["ticker"] not in excluded_tickers
         }
-        final_batch = list(unique_batch.values())
+        id_to_ticker = {
+            str(int(float(row["fund_id_mufap"]))): row["ticker"]
+            for row in master_res.data
+            if row.get("fund_id_mufap") and row["ticker"] not in excluded_tickers
+        }
 
-        # Passes through rule #3 (Hierarchy) flawlessly
-        safe_batch = filter_protected_entries(final_batch, "daily_nav")
-        if safe_batch:
-            supabase.table("daily_nav").upsert(
-                safe_batch, on_conflict="ticker,validity_date"
-            ).execute()
-            print(f"   ✅ {len(safe_batch)} MUFAP fund records updated (Delta Scrape).")
-    
+        # --- THE DELTA URL LOGIC ---
+        now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
+        datetill = (now_pk + timedelta(days=4)).strftime("%Y-%m-%d")
+        datefrom = (now_pk - timedelta(days=5)).strftime("%Y-%m-%d")
+
+        url_present = "https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=3"
+        url_window = f"https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=3&AMCId=null&fundId=null&datefrom={datefrom}&datetill={datetill}"
+
+        batch = []
+        for mufap_url in [url_present, url_window]:
+            try:
+                soup = BeautifulSoup(
+                    session.get(mufap_url, verify=False, timeout=25).text, "lxml"
+                )
+                for row in soup.find_all("tr"):
+                    cells = row.find_all("td")
+                    if len(cells) < 9:
+                        continue
+                    link = cells[2].find("a", href=True)
+                    if link:
+                        m_id = re.search(r"FundID=(\d+)", link["href"]).group(1)
+                        if m_id in target_ids:
+                            ticker = id_to_ticker[m_id]
+                            try:
+                                dt_str = datetime.strptime(
+                                    cells[8].text.strip().title(), "%b %d, %Y"
+                                ).strftime("%Y-%m-%d")
+                                ticker_logic = FUND_LOGIC_MAP.get(ticker, "Absolute")
+                                if ticker_logic != "Annualized":
+                                    parsed_date = datetime.strptime(
+                                        dt_str, "%Y-%m-%d"
+                                    ).date()
+                                    days_diff = (now_pk.date() - parsed_date).days
+                                    if days_diff > 1:
+                                        continue
+
+                                if is_valid_date(dt_str, ticker):
+                                    batch.append(
+                                        {
+                                            "ticker": ticker,
+                                            "nav": float(
+                                                cells[7].text.replace(",", "")
+                                            ),
+                                            "validity_date": dt_str,
+                                            "source": "MUFAP",
+                                        }
+                                    )
+                            except:
+                                continue
+            except Exception as e:
+                print(f"   ⚠️ MUFAP Warning on {mufap_url}: {e}")
+
+        if batch:
+            unique_batch = {
+                (item["ticker"], item["validity_date"]): item for item in batch
+            }
+            final_batch = list(unique_batch.values())
+            safe_batch = filter_protected_entries(final_batch, "daily_nav")
+            if safe_batch:
+                supabase.table("daily_nav").upsert(
+                    safe_batch, on_conflict="ticker,validity_date"
+                ).execute()
+                print(
+                    f"   ✅ {len(safe_batch)} MUFAP fund records updated (Delta Scrape)."
+                )
+
     except Exception as e:
         print(f"   ❌ MUFAP Master Error: {e}")
+
 
 # --- TASK E: UBL AMC (Priority Overwrite) ---
 def sync_ubl_amc_refined():
@@ -1003,103 +998,99 @@ def sync_mufap_payouts():
             str(int(float(row["fund_id_mufap"])))
             for row in master_res.data
             if row.get("fund_id_mufap")
-    }
-    id_to_ticker = {
-        str(int(float(row["fund_id_mufap"]))): row["ticker"]
-        for row in master_res.data
-        if row.get("fund_id_mufap")
-    }
-
-    # --- THE DELTA URL LOGIC FOR PAYOUTS ---
-    now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
-    datetill = (now_pk + timedelta(days=4)).strftime("%Y-%m-%d")
-    datefrom = (now_pk - timedelta(days=5)).strftime("%Y-%m-%d")
-
-    url_present = "https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=4"
-    url_window = f"https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=4&AMCId=null&fundId=null&datefrom={datefrom}&datetill={datetill}"
-
-    batch = []
-    
-    for payouts_url in [url_present, url_window]:
-        try:
-            soup = BeautifulSoup(
-                session.get(
-                    payouts_url,
-                    verify=False,
-                    timeout=25,
-                ).text,
-                "lxml",
-            )
-            for row in soup.find_all("tr"):
-                cells = row.find_all("td")
-                if len(cells) < 8:
-                    continue
-                link = cells[2].find("a", href=True)
-                if link and "FundID=" in link["href"]:
-                    m_id = re.search(r"FundID=(\d+)", link["href"]).group(1)
-                    if m_id in target_ids:
-                        try:
-                            payout_amount_str = cells[5].text.replace(",", "").strip()
-                            ex_nav_str = cells[6].text.replace(",", "").strip()
-                            raw_date = re.sub(r"\s+", " ", cells[7].text.strip())
-
-                            if not payout_amount_str or payout_amount_str == "-":
-                                continue
-                            payout_amount = float(payout_amount_str)
-                            ex_nav = (
-                                float(ex_nav_str)
-                                if ex_nav_str and ex_nav_str != "-"
-                                else 0.0
-                            )
-
-                            dt_str = None
-                            for fmt in [
-                                "%b %d, %Y",
-                                "%d-%b-%Y",
-                                "%d-%b-%y",
-                                "%d/%m/%Y",
-                                "%B %d, %Y",
-                            ]:
-                                try:
-                                    dt_str = datetime.strptime(raw_date, fmt).strftime(
-                                        "%Y-%m-%d"
-                                    )
-                                    break
-                                except ValueError:
-                                    pass
-                            if not dt_str:
-                                continue
-
-                            batch.append(
-                                {
-                                    "ticker": id_to_ticker[m_id],
-                                    "payout_date": dt_str,
-                                    "payout_amount": payout_amount,
-                                    "ex_nav": ex_nav,
-                                    "source": "MUFAP", 
-                                }
-                            )
-                        except:
-                            continue
-        except Exception as e:
-            print(f"   ❌ Payouts Error on {payouts_url}: {e}")
-
-    if batch:
-        unique_batch = {
-            (item["ticker"], item["payout_date"]): item for item in batch
         }
-        final_batch = list(unique_batch.values())
+        id_to_ticker = {
+            str(int(float(row["fund_id_mufap"]))): row["ticker"]
+            for row in master_res.data
+            if row.get("fund_id_mufap")
+        }
 
-        # Use the updated filter to protect MANUAL entries based on payout_date
-        safe_batch = filter_protected_entries(
-            final_batch, "payout_history", date_col="payout_date"
-        )
+        now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
+        datetill = (now_pk + timedelta(days=4)).strftime("%Y-%m-%d")
+        datefrom = (now_pk - timedelta(days=5)).strftime("%Y-%m-%d")
 
-        if safe_batch:
-            supabase.table("payout_history").upsert(
-                safe_batch, on_conflict="ticker,payout_date"
-            ).execute()
-            print(f"   ✅ {len(safe_batch)} Payouts synced (Delta Scrape, Manual protected).")
+        url_present = "https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=4"
+        url_window = f"https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=4&AMCId=null&fundId=null&datefrom={datefrom}&datetill={datetill}"
+
+        batch = []
+        for payouts_url in [url_present, url_window]:
+            try:
+                soup = BeautifulSoup(
+                    session.get(payouts_url, verify=False, timeout=25).text, "lxml"
+                )
+                for row in soup.find_all("tr"):
+                    cells = row.find_all("td")
+                    if len(cells) < 8:
+                        continue
+                    link = cells[2].find("a", href=True)
+                    if link and "FundID=" in link["href"]:
+                        m_id = re.search(r"FundID=(\d+)", link["href"]).group(1)
+                        if m_id in target_ids:
+                            try:
+                                payout_amount_str = (
+                                    cells[5].text.replace(",", "").strip()
+                                )
+                                ex_nav_str = cells[6].text.replace(",", "").strip()
+                                raw_date = re.sub(r"\s+", " ", cells[7].text.strip())
+
+                                if not payout_amount_str or payout_amount_str == "-":
+                                    continue
+                                payout_amount = float(payout_amount_str)
+                                ex_nav = (
+                                    float(ex_nav_str)
+                                    if ex_nav_str and ex_nav_str != "-"
+                                    else 0.0
+                                )
+
+                                dt_str = None
+                                for fmt in [
+                                    "%b %d, %Y",
+                                    "%d-%b-%Y",
+                                    "%d-%b-%y",
+                                    "%d/%m/%Y",
+                                    "%B %d, %Y",
+                                ]:
+                                    try:
+                                        dt_str = datetime.strptime(
+                                            raw_date, fmt
+                                        ).strftime("%Y-%m-%d")
+                                        break
+                                    except ValueError:
+                                        pass
+                                if not dt_str:
+                                    continue
+
+                                batch.append(
+                                    {
+                                        "ticker": id_to_ticker[m_id],
+                                        "payout_date": dt_str,
+                                        "payout_amount": payout_amount,
+                                        "ex_nav": ex_nav,
+                                        "source": "MUFAP",
+                                    }
+                                )
+                            except:
+                                continue
+            except Exception as e:
+                print(f"   ⚠️ Payouts Warning on {payouts_url}: {e}")
+
+        if batch:
+            unique_batch = {
+                (item["ticker"], item["payout_date"]): item for item in batch
+            }
+            final_batch = list(unique_batch.values())
+            safe_batch = filter_protected_entries(
+                final_batch, "payout_history", date_col="payout_date"
+            )
+
+            if safe_batch:
+                supabase.table("payout_history").upsert(
+                    safe_batch, on_conflict="ticker,payout_date"
+                ).execute()
+                print(
+                    f"   ✅ {len(safe_batch)} Payouts synced (Delta Scrape, Manual protected)."
+                )
+
     except Exception as e:
         print(f"   ❌ Payouts Error: {e}")
 
@@ -1204,11 +1195,10 @@ def sync_crypto_rates():
 
 # --- TASK I: MUFAP AUM (Monthly) ---
 def sync_mufap_aum():
-    print("💰 Syncing MUFAP AUM...")
-    from thefuzz import process
-
     try:
-        # AUM is reported for the previous month. This safely calculates YYYY-MM for last month.
+        print("💰 Syncing MUFAP AUM...")
+        from thefuzz import process
+
         now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
         first_day_this_month = now_pk.replace(day=1)
         last_month = first_day_this_month - timedelta(days=1)
@@ -1217,7 +1207,6 @@ def sync_mufap_aum():
         url = f"https://www.mufap.com.pk/Industry/IndustryStatMonthly?tab=1&datefrom={target_month}"
         soup = BeautifulSoup(session.get(url, verify=False, timeout=20).text, "lxml")
 
-        # Build a dictionary for Fuzzy Matching
         db_funds = {}
         for r in master_res.data:
             name = r.get("fund_name") or r.get("amc_website_name") or r["ticker"]
@@ -1228,14 +1217,12 @@ def sync_mufap_aum():
 
         for row in soup.find_all("tr"):
             cells = row.find_all("td")
-            
-            # 🚨 FIX: MUFAP AUM table only has 5 columns.
+
+            # 🚨 THE FIX: MUFAP AUM table only has 5 columns, not 6!
             if len(cells) >= 5:
-                # Index 1 is Fund Name, Index 4 is AUM
                 raw_fund_name = cells[1].get_text(strip=True)
                 raw_aum = cells[4].get_text(strip=True).replace(",", "")
 
-                # Skip headers, empty rows, and "Not Published" funds
                 if (
                     not raw_fund_name
                     or raw_fund_name.lower() == "fund name"
@@ -1247,8 +1234,6 @@ def sync_mufap_aum():
 
                 try:
                     aum_val = float(raw_aum)
-
-                    # Fuzzy match the MUFAP name to our database name
                     best_match, score = process.extractOne(raw_fund_name, db_fund_names)
                     if score >= 85:
                         ticker = db_funds[best_match]
@@ -1257,10 +1242,8 @@ def sync_mufap_aum():
                     continue
 
         if batch:
-            # Deduplicate just in case MUFAP lists a fund twice
             unique_batch = {item["ticker"]: item for item in batch}
             final_batch = list(unique_batch.values())
-
             supabase.table("performance_stats").upsert(
                 final_batch, on_conflict="ticker"
             ).execute()

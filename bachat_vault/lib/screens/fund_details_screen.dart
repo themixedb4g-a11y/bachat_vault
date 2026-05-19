@@ -366,12 +366,19 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
   }
 
   // --- THE NEW DYNAMIC SHUTTER MENU ROW BUILDER ---
-  Widget _buildDetailRow(String label, dynamic value, {String suffix = '', String prefix = ''}) {
+  Widget _buildDetailRow(String label, dynamic value, {String suffix = '', String prefix = '', String? subText}) {
     if (value == null || value.toString().trim().isEmpty || value.toString().trim() == 'null' || value.toString().trim() == 'N/A') {
       return const SizedBox.shrink();
     }
     
     String displayValue = value.toString().trim();
+
+    if (label == 'Minimum Investment') {
+      if (displayValue.contains('|')) {
+        displayValue = '${displayValue.split('|')[0].replaceAll('Initial', '').trim()} (Min)'; 
+      }
+    }
+
     if (value is num) {
        displayValue = value.toStringAsFixed(2);
        if (displayValue.endsWith('.00')) {
@@ -380,9 +387,34 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     }
     
     if (suffix.isNotEmpty && displayValue.endsWith(suffix.trim())) {
-      suffix = ''; 
+      suffix = '';
+    }
+
+    // 🚨 NEW LOGIC: If the text is very long, stack it instead of shrinking it!
+    bool isLongText = displayValue.length > 25 || label == 'Category';
+
+    if (isLongText) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '$prefix$displayValue$suffix', 
+                textAlign: TextAlign.right, 
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)
+              ),
+            ),
+          ],
+        ),
+      );
     }
     
+    // Standard Row layout for short text
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: Row(
@@ -391,7 +423,20 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         children: [
           Expanded(flex: 5, child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500))),
           const SizedBox(width: 12),
-          Expanded(flex: 7, child: Text('$prefix$displayValue$suffix', textAlign: TextAlign.right, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700))),
+          Expanded(
+            flex: 8, 
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('$prefix$displayValue$suffix', textAlign: TextAlign.right, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                if (subText != null && subText.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2.0),
+                    child: Text(subText, textAlign: TextAlign.right, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w400)),
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -842,9 +887,9 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                                   _buildDetailRow('Fund Manager', widget.fund['fund_manager']),
                                   _buildDetailRow('Inception Date', incDateStr),
                                   if (_latestNavVal != null) 
-                                    _buildDetailRow('Latest NAV', 'PKR $_latestNavVal', suffix: _latestNavDateVal != null ? ' (As of $_latestNavDateVal)' : ''),
+                                  _buildDetailRow('Latest NAV', 'PKR $_latestNavVal', subText: _latestNavDateVal != null ? 'As of $_latestNavDateVal' : null),
                                   if (widget.fund['aum'] != null) 
-                                    _buildDetailRow('AUM', '${NumberFormat('#,##0.00').format(widget.fund['aum'])} Million'),
+                                  _buildDetailRow('AUM', (widget.fund['aum'] as num).toDouble() >= 1000 ? 'PKR ${((widget.fund['aum'] as num).toDouble() / 1000).toStringAsFixed(2)} Billion' : 'PKR ${NumberFormat('#,##0.00').format(widget.fund['aum'])} Million'),
                                   _buildDetailRow('Minimum Investment', widget.fund['min_investment']),
                                   _buildDetailRow('Front-End Load (FEL)', widget.fund['fel']),
                                   _buildDetailRow('Back-End Load (BEL)', widget.fund['bel']),
