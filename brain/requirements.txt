@@ -6,3 +6,7 @@ lxml
 pytz
 yfinance
 pandas
+google-auth
+cloudscraper==1.2.71
+pdfplumber==0.11.0
+thefuzz==0.22.1

@@ -10,7 +10,6 @@ import urllib3
 import sys
 import functions_framework
 from concurrent.futures import ThreadPoolExecutor  # <-- Added for ETF fetching
-from dotenv import load_dotenv
 
 session = requests.Session()
 session.headers.update(
@@ -22,13 +21,19 @@ session.headers.update(
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 1. CONNECTION ---
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass  # Google Cloud ignores this safely!
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ ERROR: Supabase Keys are missing!")
-    sys.exit(1)
+    raise ValueError("❌ Connection Error: Keys missing.")
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 

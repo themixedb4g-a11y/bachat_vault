@@ -6,17 +6,20 @@ from datetime import datetime, timedelta
 from supabase import create_client
 import pytz
 import functions_framework
-from dotenv import load_dotenv
 
 # --- 1. CONNECTION ---
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass  # Google Cloud ignores this safely!
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ Connection Error: Keys missing.")
-    exit(1)
+    raise ValueError("❌ Connection Error: Keys missing.")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
