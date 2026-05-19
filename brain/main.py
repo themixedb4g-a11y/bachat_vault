@@ -5,9 +5,12 @@ import pandas as pd
 from datetime import datetime, timedelta
 from supabase import create_client
 import pytz
-import functions_framework  # <-- Google Cloud requirement
+import functions_framework
+from dotenv import load_dotenv
 
 # --- 1. CONNECTION ---
+load_dotenv()
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 

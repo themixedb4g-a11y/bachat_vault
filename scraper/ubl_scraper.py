@@ -6,11 +6,13 @@ import urllib3
 from bs4 import BeautifulSoup
 from thefuzz import process
 from supabase import create_client, Client
+from dotenv import load_dotenv
 
 # Mute the SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 1. SUPABASE CONNECTION ---
+load_dotenv()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 

@@ -10,6 +10,7 @@ import urllib3
 import sys
 import functions_framework
 from concurrent.futures import ThreadPoolExecutor  # <-- Added for ETF fetching
+from dotenv import load_dotenv
 
 session = requests.Session()
 session.headers.update(
@@ -21,6 +22,7 @@ session.headers.update(
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 1. CONNECTION ---
+load_dotenv()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 

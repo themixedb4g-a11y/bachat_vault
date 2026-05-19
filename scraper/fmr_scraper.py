@@ -6,8 +6,10 @@ import pdfplumber
 from bs4 import BeautifulSoup
 from thefuzz import process  # The Fuzzy Matching Engine
 from supabase import create_client, Client
+from dotenv import load_dotenv
 
 # --- 1. SUPABASE CONNECTION ---
+load_dotenv()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
