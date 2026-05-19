@@ -2,7 +2,8 @@ name: bachat_vault
 description: "Smart Investment Guide."
 publish_to: 'none' 
 
-version: 1.0.0+4
+# 👇 UPDATED VERSION NUMBER 👇
+version: 1.2.0+6
 
 environment:
   sdk: ^3.11.0
@@ -20,6 +21,8 @@ dependencies:
   fl_chart: ^1.2.0
   package_info_plus: ^9.0.1
   auto_size_text: ^3.0.0
+  screenshot: ^3.0.0
+  gal: ^2.3.2
 
 dev_dependencies:
   flutter_test:
@@ -48,8 +51,10 @@ flutter_launcher_icons:
 # --- SPLASH SCREEN CONFIGURATION ---
 flutter_native_splash:
   color: "#0F172A"
-  image: "assets/app_logo.png"
+  image: "assets/splash_logo.png"
+  android_gravity: center
+  ios_content_mode: center
   android_12:
-    image: "assets/app_logo.png"
+    image: "assets/splash_logo.png"
     icon_background_color: "#0F172A"
     color: "#0F172A"

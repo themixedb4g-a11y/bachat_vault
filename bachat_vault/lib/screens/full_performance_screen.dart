@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection; 
 import 'dart:ui';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bachat_vault/screens/fund_details_screen.dart';
 import 'package:bachat_vault/screens/compare_funds_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'package:screenshot/screenshot.dart';
+import 'package:gal/gal.dart';
 
 class FullPerformanceScreen extends StatefulWidget {
   final List<Map<String, dynamic>> allFunds;
@@ -30,7 +33,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   late TextEditingController _searchController;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
-  // Filters
   List<String> _categories = ['All'];
   List<String> _amcs = ['All'];
   final List<String> _shariahOptions = ['All', 'Islamic', 'Conventional'];
@@ -40,19 +42,22 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   String _selectedShariah = 'All';
   String _searchQuery = '';
 
-  // Favorites Storage
   List<String> _favoriteTickers = [];
   bool _showFavoritesOnly = false;
 
-  // Custom Date Range
   DateTime? _customStartDate;
   DateTime? _customEndDate;
   bool _isCustomLoading = false;
   Map<String, double> _customReturnsMap = {};
 
-  // Performance Optimization
   List<Map<String, dynamic>> _displayedFunds = [];
   bool _isFiltering = false;
+
+  bool _isAdmin = false;
+  int _secretTaps = 0;
+  DateTime? _lastTapTime;
+  
+  final ScreenshotController _screenshotController = ScreenshotController();
 
   @override
   void initState() {
@@ -60,7 +65,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     _investmentAmount = widget.initialInvestment;
     _investmentController = TextEditingController(text: _currencyFormat.format(_investmentAmount));
     _searchController = TextEditingController();
-    
     _searchController.addListener(() {
       _onFilterChanged(() {
         _searchQuery = _searchController.text.trim();
@@ -69,7 +73,8 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 
     _setupFilters();
     _loadFavorites();
-    _applyFiltersAsync(); // Initial Load
+    _loadAdminStatus(); 
+    _applyFiltersAsync();
   }
 
   @override
@@ -79,7 +84,38 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     super.dispose();
   }
 
-  // --- LOCAL STORAGE FOR FAVORITES ---
+  Future<void> _loadAdminStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isAdmin = prefs.getBool('is_admin') ?? false;
+    });
+  }
+
+  Future<void> _handleSecretTap() async {
+    final now = DateTime.now();
+    if (_lastTapTime != null && now.difference(_lastTapTime!).inSeconds > 1) {
+      _secretTaps = 0;
+    }
+    _lastTapTime = now;
+    _secretTaps++;
+
+    if (_secretTaps >= 7) {
+      _secretTaps = 0;
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _isAdmin = !_isAdmin;
+      });
+      prefs.setBool('is_admin', _isAdmin);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_isAdmin ? 'Developer Mode Unlocked 🔓' : 'Developer Mode Locked 🔒'),
+          backgroundColor: _isAdmin ? Colors.green : Colors.red,
+        ));
+      }
+    }
+  }
+
   Future<void> _loadFavorites() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -100,11 +136,9 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     });
   }
 
-  // --- PERFORMANCE OPTIMIZATION (Fixes Dropdown Lag) ---
   void _onFilterChanged(VoidCallback updateState) {
     updateState();
     setState(() { _isFiltering = true; });
-    // This tiny delay lets the UI animation finish BEFORE the heavy math starts
     Future.delayed(const Duration(milliseconds: 150), () {
       if (mounted) _applyFiltersAsync();
     });
@@ -120,15 +154,13 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   void _setupFilters() {
     final Set<String> categorySet = {};
     final Set<String> amcSet = {};
-    
+
     for (var mf in widget.allFunds) {
-      // --- UPDATED: Look for the short keys first, fallback to the raw keys if missing ---
-      final cat = mf['short_category'] ?? mf['category']; 
+      final cat = mf['short_category'] ?? mf['category'];
       if (cat != null && cat.toString().isNotEmpty) categorySet.add(cat.toString().trim());
       
-      final amc = mf['short_amc_name'] ?? mf['amc_name']; 
+      final amc = mf['short_amc_name'] ?? mf['amc_name'];
       if (amc != null && amc.toString().isNotEmpty) amcSet.add(amc.toString().trim());
-      // ---------------------------------------------------------------------------------
     }
     
     setState(() {
@@ -151,7 +183,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       case '15Y': return 'return_15y';
       case 'MTD': return 'return_mtd';
       case 'YTD': return 'return_fytd';
-      case 'Custom': return 'return_1d'; // Placeholder for custom
+      case 'Custom': return 'return_1d';
       default: return 'return_1d';
     }
   }
@@ -160,28 +192,22 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     final sortKey = _getSortKey();
     var filtered = widget.allFunds.toList();
 
-    // Favorites Filter
     if (_showFavoritesOnly) {
       filtered = filtered.where((f) => _favoriteTickers.contains(f['ticker'])).toList();
     }
 
-    // SEARCH BAR BYPASS LOGIC
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
       filtered = filtered.where((f) {
-        // --- UPDATED: Search using the short names ---
         final name = (f['short_name'] ?? f['fund_name'])?.toString().toLowerCase() ?? '';
         final amc = (f['short_amc_name'] ?? f['amc_name'])?.toString().toLowerCase() ?? '';
         return name.contains(query) || amc.contains(query);
       }).toList();
     } else {
-      // Normal Dropdown Filters apply ONLY if Search is empty
       if (_selectedCategory != 'All') {
-        // --- UPDATED: Filter using short category ---
         filtered = filtered.where((f) => (f['short_category'] ?? f['category'])?.toString().trim() == _selectedCategory).toList();
       }
       if (_selectedAmc != 'All') {
-        // --- UPDATED: Filter using short AMC name ---
         filtered = filtered.where((f) => (f['short_amc_name'] ?? f['amc_name'])?.toString().trim() == _selectedAmc).toList();
       }
       if (_selectedShariah == 'Islamic') {
@@ -191,57 +217,834 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       }
     }
 
-    // Filter out null returns (Unless Custom is selected, we'll calculate that later)
     if (_selectedPeriod != 'Custom') {
       filtered = filtered.where((f) => f[sortKey] != null).toList();
     }
 
-// SMART SORTING
     filtered.sort((a, b) {
-      final valA = _selectedPeriod == 'Custom'
-          ? (_customReturnsMap[a['ticker']] ?? -999.0)
-          : (a[sortKey] as num?)?.toDouble() ?? -999.0;
-          
-      final valB = _selectedPeriod == 'Custom'
-          ? (_customReturnsMap[b['ticker']] ?? -999.0)
-          : (b[sortKey] as num?)?.toDouble() ?? -999.0;
-
+      final valA = _selectedPeriod == 'Custom' ? (_customReturnsMap[a['ticker']] ?? -999.0) : (a[sortKey] as num?)?.toDouble() ?? -999.0;
+      final valB = _selectedPeriod == 'Custom' ? (_customReturnsMap[b['ticker']] ?? -999.0) : (b[sortKey] as num?)?.toDouble() ?? -999.0;
+      
       final logicA = a['return_logic']?.toString().trim() ?? '';
       final logicB = b['return_logic']?.toString().trim() ?? '';
-
-      // 1. Define short-term sort keys that require strict date sorting
-      // (Added both 'return_ytd' and 'return_fytd' just to be safe depending on your exact schema)
-      final shortTermKeys = ['return_1d', 'return_mtd', 'return_30d', 'return_fytd', 'return_ytd', 'return_1y'];
-      final isShortTerm = shortTermKeys.contains(sortKey);
-
-      // 2. Apply date-first sorting ONLY for Absolute funds in short-term periods
+      final isShortTerm = ['return_1d', 'return_mtd', 'return_30d', 'return_fytd', 'return_ytd', 'return_1y'].contains(sortKey);
+      
       if (isShortTerm && logicA == 'Absolute' && logicB == 'Absolute') {
         final dateStrA = a['last_validity_date']?.toString();
         final dateStrB = b['last_validity_date']?.toString();
         final dateA = dateStrA != null ? (DateTime.tryParse(dateStrA) ?? DateTime(1970)) : DateTime(1970);
         final dateB = dateStrB != null ? (DateTime.tryParse(dateStrB) ?? DateTime(1970)) : DateTime(1970);
-
-        int dateComparison = dateB.compareTo(dateA); // Descending (Latest date first)
         
-        // If dates are different, rank by the latest date first
+        int dateComparison = dateB.compareTo(dateA);
         if (dateComparison != 0) return dateComparison;
       }
       
-      // 3. Fallback: If long-term, Custom, non-Absolute, or dates are exactly the same, sort strictly by return
       return valB.compareTo(valA);
     });
 
     return filtered;
-
   }
 
-  // --- CUSTOM DATE PICKER WIDGETS ---
+  // --- 📸 EXPORT MENU ---
+  void _showExportMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text('Select Export Type', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.category_outlined, color: Colors.tealAccent),
+                title: const Text('Top 10 Category-wise', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _exportReports();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.domain_outlined, color: Colors.tealAccent),
+                title: const Text('All Funds AMC-wise', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  final uniqueAmcs = widget.allFunds
+                      .map((f) => (f['short_amc_name'] ?? f['amc_name']).toString().trim())
+                      .where((a) => a.isNotEmpty && a != 'All')
+                      .toSet();
+                  _showAmcSelectionDialog(uniqueAmcs);
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  // --- 📸 AMC CHECKBOX DIALOG ---
+  Future<void> _showAmcSelectionDialog(Set<String> uniqueAmcs) async {
+    List<String> amcList = uniqueAmcs.toList()..sort();
+    List<String> selectedAmcs = List.from(amcList);
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E293B),
+              title: const Text('Select AMCs', style: TextStyle(color: Colors.white)),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(onPressed: () => setState(() => selectedAmcs = List.from(amcList)), child: const Text('Select All', style: TextStyle(color: Colors.tealAccent))),
+                        TextButton(onPressed: () => setState(() => selectedAmcs.clear()), child: const Text('Clear All', style: TextStyle(color: Colors.tealAccent))),
+                      ]
+                    ),
+                    const Divider(color: Colors.white24),
+                    Expanded(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: amcList.length,
+                        itemBuilder: (context, index) {
+                          final amc = amcList[index];
+                          return CheckboxListTile(
+                            activeColor: Colors.tealAccent,
+                            checkColor: Colors.black,
+                            title: Text(amc, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                            value: selectedAmcs.contains(amc),
+                            onChanged: (val) {
+                              setState(() {
+                                if (val == true) selectedAmcs.add(amc);
+                                else selectedAmcs.remove(amc);
+                              });
+                            }
+                          );
+                        }
+                      )
+                    )
+                  ]
+                )
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent, foregroundColor: Colors.black),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    if (selectedAmcs.isNotEmpty) {
+                      _exportAmcReports(selectedAmcs);
+                    }
+                  }, 
+                  child: const Text('Export')
+                )
+              ]
+            );
+          }
+        );
+      }
+    );
+  }
+
+  // --- 📸 1. CATEGORY-WISE EXPORT LOGIC ---
+  Future<void> _exportReports() async {
+    showDialog(
+      context: context, barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const Dialog(
+          backgroundColor: Color(0xFF1E293B),
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.tealAccent),
+                SizedBox(width: 20),
+                Text("Generating High-Res Reports...", style: TextStyle(color: Colors.white)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      List<Map<String, dynamic>> getTop10(List<String> categoryMatches, String primarySortKey) {
+        var list = widget.allFunds.where((f) {
+          final ticker = f['ticker']?.toString() ?? '';
+          if (ticker == 'HBLTETF' || ticker == 'GOLD_24K') return false;
+
+          final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
+          return categoryMatches.contains(cat);
+        }).toList();
+
+        var matureFunds = list.where((f) => f[primarySortKey] != null).toList();
+        matureFunds.sort((a, b) {
+          final valA = (a[primarySortKey] as num?)?.toDouble() ?? -999.0;
+          final valB = (b[primarySortKey] as num?)?.toDouble() ?? -999.0;
+          return valB.compareTo(valA);
+        });
+
+        return matureFunds.take(10).toList();
+      }
+
+      final mmList = getTop10(['Money Market'], 'return_30d');
+      final incList = getTop10(['Income'], 'return_30d');
+      final eqList = getTop10(['Equity', 'Index Tracker'], 'return_1y'); 
+      final etfList = getTop10(['Exchange Traded Fund'], 'return_1y');
+      final commList = getTop10(['Commodities'], 'return_1d');
+      final aaList = getTop10(['Asset Allocation'], 'return_1y');
+      final balList = getTop10(['Balanced'], 'return_1y');
+
+      // --- PURE DATABASE DATE LOGIC (LAST WORKING DAY) ---
+      DateTime maxAbsoluteDate = DateTime(1970);
+      for (var f in widget.allFunds) {
+        final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
+        final t = f['ticker']?.toString() ?? '';
+        
+        if (t == 'HBLTETF' || t == 'GOLD_24K') continue;
+
+        final isAbsoluteCat = ['Equity', 'Index Tracker', 'Exchange Traded Fund', 'Asset Allocation', 'Balanced'].contains(cat);
+        
+        if (isAbsoluteCat && f['last_validity_date'] != null) {
+          final dt = DateTime.tryParse(f['last_validity_date'].toString());
+          if (dt != null) {
+            DateTime dOnly = DateTime(dt.year, dt.month, dt.day);
+            if (dOnly.isAfter(maxAbsoluteDate)) {
+              maxAbsoluteDate = dOnly;
+            }
+          }
+        }
+      }
+      
+      Future<void> captureAndSave(String title, List<Map<String, dynamic>> funds, bool isLongTerm) async {
+        if (funds.isEmpty) return;
+
+        double contentHeight = 120.0; 
+        contentHeight += 120.0; 
+        contentHeight += 40.0;  
+        contentHeight += 20.0;  
+        contentHeight += 40.0;  
+        contentHeight += 20.0;
+        
+        contentHeight += funds.length * 100.0; // Reduced row height for symmetry 
+        
+        if (title == 'Top Equity Funds') {
+          contentHeight += 40.0;
+          contentHeight += 220.0; 
+        }
+
+        double dynamicHeight = contentHeight + 100.0;
+
+        Widget reportCard = MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.noScaling),
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: OverflowBox(
+              minWidth: 1080, maxWidth: 1080,
+              minHeight: dynamicHeight, maxHeight: dynamicHeight,
+              alignment: Alignment.topCenter,
+              child: Material(
+                color: const Color(0xFF0F172A),
+                child: Container(
+                  width: 1080, height: dynamicHeight,
+                  alignment: Alignment.topCenter,
+                  padding: const EdgeInsets.all(60.0), 
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min, 
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: 120,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            SizedBox(
+                              width: 600,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(title, style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 48, fontWeight: FontWeight.bold), maxLines: 1),
+                                  Text('Investment: PKR 1,00,000', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 24), maxLines: 1),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              decoration: BoxDecoration(color: Colors.tealAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.tealAccent)),
+                              child: Text('Bachat Vault', style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 28, fontWeight: FontWeight.w800)),
+                            )
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                      const Divider(color: Colors.white24, thickness: 2, height: 20),
+                      
+                      SizedBox(
+                        height: 40,
+                        child: Row(
+                          children: [
+                            SizedBox(width: 500, child: Text('Fund Name', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold))),
+                            SizedBox(width: 230, child: Text('1D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold))),
+                            SizedBox(width: 230, child: Text(isLongTerm ? '1Y Return' : '30D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold))),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      ...funds.map((f) {
+                        final name = f['short_name'] ?? f['fund_name']?.toString() ?? 'Unknown';
+                        final amc = f['short_amc_name'] ?? f['amc_name']?.toString() ?? '';
+                        final isShariah = (f['is_shariah'] == 1 || f['is_shariah'] == '1' || f['is_shariah'] == true);
+                        final displayName = '$name${isShariah ? " 🕌" : ""}';
+                        final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
+                        final logic = f['return_logic']?.toString().trim() ?? '';
+                        
+                        // --- THE PERFECT DELAY LOGIC ---
+                        bool isStale = false;
+                        if (f['last_validity_date'] != null) {
+                          final dt = DateTime.tryParse(f['last_validity_date'].toString());
+                          if (dt != null) {
+                            final dOnly = DateTime(dt.year, dt.month, dt.day);
+                            if (cat == 'Commodities') {
+                              if (dOnly.isBefore(maxAbsoluteDate.subtract(const Duration(days: 1)))) {
+                                isStale = true;
+                              }
+                            } else if (cat == 'Money Market' || cat == 'Income' || logic == 'Annualized') {
+                              if (dOnly.isBefore(maxAbsoluteDate)) {
+                                isStale = true;
+                              }
+                            } else {
+                              if (dOnly.isBefore(maxAbsoluteDate)) {
+                                isStale = true;
+                              }
+                            }
+                          } else {
+                            isStale = true;
+                          }
+                        } else {
+                          isStale = true;
+                        }
+                        
+                        String validityDateStr = f['last_validity_date'] != null 
+                            ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(f['last_validity_date'].toString()) ?? DateTime.now()) 
+                            : 'N/A';
+                        if (isStale) validityDateStr += ' (Delayed)';
+                        Color validityColor = isStale ? Colors.redAccent.shade100 : Colors.white54;
+
+                        final r1d = f['return_1d'];
+                        final key2 = isLongTerm ? 'return_1y' : 'return_30d';
+                        final r2 = f[key2];
+
+                        String formatPkr(dynamic r) {
+                          if (r == null) return 'N/A';
+                          double val = (r as num).toDouble();
+                          double pkr = 100000.0 * (val - 1.0);
+                          final format = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
+                          return '${pkr > 0 ? '+' : pkr < 0 ? '-' : ''}${format.format(pkr.abs())}';
+                        }
+                        
+                        Color getColor(dynamic r) {
+                          if (r == null) return Colors.white54;
+                          double val = (r as num).toDouble();
+                          return val >= 1.0 ? Colors.greenAccent : Colors.redAccent;
+                        }
+
+                        return SizedBox(
+                          height: 100, // Compact height
+                          child: Container(
+                            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white12))),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 500, 
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 16.0),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(amc.toUpperCase(), style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(displayName, style: GoogleFonts.poppins(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600))),
+                                        Text('Validity: $validityDateStr', style: GoogleFonts.poppins(color: validityColor, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      ],
+                                    ),
+                                  )
+                                ),
+                                SizedBox(
+                                  width: 230, 
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      FittedBox(fit: BoxFit.scaleDown, child: Text(formatPkr(r1d), style: GoogleFonts.poppins(color: getColor(r1d), fontSize: 24, fontWeight: FontWeight.bold))),
+                                    ]
+                                  )
+                                ),
+                                SizedBox(
+                                  width: 230, 
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      FittedBox(fit: BoxFit.scaleDown, child: Text(formatPkr(r2), style: GoogleFonts.poppins(color: getColor(r2), fontSize: 24, fontWeight: FontWeight.bold))),
+                                    ]
+                                  )
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                      
+                      if (title == 'Top Equity Funds') ...[
+                        const SizedBox(height: 40),
+                        SizedBox(
+                          height: 220, 
+                          child: Container(
+                            padding: const EdgeInsets.all(32),
+                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(16)),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Market Benchmarks', style: GoogleFonts.poppins(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 24),
+                                Expanded(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      _buildBenchmarkStat('KSE-100 (1D)', widget.benchmarkStats['KSE100']?['return_1d']),
+                                      _buildBenchmarkStat('KSE-100 (1Y)', widget.benchmarkStats['KSE100']?['return_1y']),
+                                      _buildBenchmarkStat('KMI-30 (1D)', widget.benchmarkStats['KMI30']?['return_1d']),
+                                      _buildBenchmarkStat('KMI-30 (1Y)', widget.benchmarkStats['KMI30']?['return_1y']),
+                                    ],
+                                  ),
+                                )
+                               ],
+                            ),
+                          ),
+                        )
+                       ]
+                    ],
+                  ),
+                ),
+              ),
+            ),
+           ),
+        );
+
+        Uint8List capturedImage = await _screenshotController.captureFromWidget(
+          reportCard, 
+          delay: const Duration(milliseconds: 100),
+          targetSize: Size(1080, dynamicHeight),
+          pixelRatio: 1.0, 
+        );
+
+        await Gal.putImageBytes(capturedImage, name: 'BachatVault_${title.replaceAll(' ', '')}_Report');
+      }
+
+      await captureAndSave('Top Money Market Funds', mmList, false);
+      await captureAndSave('Top Income Funds', incList, false);
+      await captureAndSave('Top Equity Funds', eqList, true);
+      await captureAndSave('Top Asset Allocation Funds', aaList, true);
+      await captureAndSave('Top Balanced Funds', balList, true);
+      await captureAndSave('Top Commodity Funds', commList, true);
+      await captureAndSave('Top ETFs', etfList, true);
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 7 Reports saved to Gallery!'), backgroundColor: Colors.green, duration: Duration(seconds: 4)));
+      }
+
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  // --- 📸 2. AMC-WISE EXPORT LOGIC (OPTIMIZED HEIGHT) ---
+  Future<void> _exportAmcReports(List<String> selectedAmcs) async {
+    showDialog(
+      context: context, barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const Dialog(
+          backgroundColor: Color(0xFF1E293B),
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.tealAccent),
+                SizedBox(width: 20),
+                Text("Generating AMC Reports...", style: TextStyle(color: Colors.white)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      int imagesSaved = 0;
+
+      int getCatPriority(String cat) {
+        switch(cat) {
+          case 'Money Market': return 1;
+          case 'Income': return 2;
+          case 'Balanced': return 3;
+          case 'Asset Allocation': return 4;
+          case 'Equity': return 5;
+          case 'Index Tracker': return 6;
+          case 'Exchange Traded Fund': return 7;
+          case 'Commodities': return 8; 
+          default: return 99;
+        }
+      }
+
+      // --- PURE DATABASE DATE LOGIC (LAST WORKING DAY) ---
+      DateTime maxAbsoluteDate = DateTime(1970);
+      for (var f in widget.allFunds) {
+        final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
+        final t = f['ticker']?.toString() ?? '';
+        
+        if (t == 'HBLTETF' || t == 'GOLD_24K') continue;
+
+        final isAbsoluteCat = ['Equity', 'Index Tracker', 'Exchange Traded Fund', 'Asset Allocation', 'Balanced'].contains(cat);
+        
+        if (isAbsoluteCat && f['last_validity_date'] != null) {
+          final dt = DateTime.tryParse(f['last_validity_date'].toString());
+          if (dt != null) {
+            DateTime dOnly = DateTime(dt.year, dt.month, dt.day);
+            if (dOnly.isAfter(maxAbsoluteDate)) {
+              maxAbsoluteDate = dOnly;
+            }
+          }
+        }
+      }
+
+      for (String amc in selectedAmcs) {
+        var amcFunds = widget.allFunds.where((f) {
+          final a = (f['short_amc_name'] ?? f['amc_name']).toString().trim();
+          final t = f['ticker']?.toString() ?? '';
+          final n = f['fund_name']?.toString() ?? '';
+          final sn = f['short_name']?.toString() ?? '';
+
+          if (t == 'HBLTETF' || t == 'GOLD_24K') return false;
+
+          // 🚨 EXCLUDED FUNDS LOGIC
+          final excludeNames = [
+            'Meezan Daily Income Fund (Meezan Mahana Munafa Plan)',
+            'Meezan Daily Income Fund (MDIP I)',
+            'Meezan Rozana Amdani Fund',
+            'Alhamra Daily Dividend Fund',
+            'NBP Cash Plan II',
+            'Pak Qatar Daily Dividend Plan',
+            'Meezan Mahana Munafa Plan',
+            'Meezan Munafa Plan I'
+          ];
+
+          if (excludeNames.contains(n) || excludeNames.contains(sn)) return false;
+          // Deep substring catch
+          if (n.contains('Meezan Rozana Amdani') || n.contains('NBP Cash Plan II') || n.contains('Pak Qatar Daily Dividend') || n.contains('Alhamra Daily Dividend')) return false;
+
+          return a == amc;
+        }).toList();
+        
+        if (amcFunds.isEmpty) continue;
+
+        var groupA = amcFunds.where((f) {
+          final cat = f['short_category']?.toString().trim() ?? '';
+          return cat == 'Money Market' || cat == 'Income';
+        }).toList();
+        groupA.sort((a, b) => getCatPriority(a['short_category'] ?? '').compareTo(getCatPriority(b['short_category'] ?? '')));
+
+        var groupB = amcFunds.where((f) {
+          final cat = f['short_category']?.toString().trim() ?? '';
+          return ['Balanced', 'Asset Allocation', 'Equity', 'Index Tracker', 'Exchange Traded Fund', 'Commodities'].contains(cat);
+        }).toList();
+        groupB.sort((a, b) => getCatPriority(a['short_category'] ?? '').compareTo(getCatPriority(b['short_category'] ?? '')));
+
+        if (groupA.isEmpty && groupB.isEmpty) continue;
+
+        // REDUCED ROW HEIGHT (140 -> 100)
+        double contentHeight = 120.0 + 120.0 + 40.0 + 20.0;
+        if (groupA.isNotEmpty) {
+          contentHeight += 80.0 + (groupA.length * 100.0);
+        }
+        if (groupB.isNotEmpty) {
+          if (groupA.isNotEmpty) contentHeight += 40.0;
+          contentHeight += 80.0 + (groupB.length * 100.0);
+        }
+        double dynamicHeight = contentHeight + 100.0;
+
+        Widget buildFundRow(Map<String, dynamic> f, bool isLongTerm) {
+          final name = f['short_name'] ?? f['fund_name']?.toString() ?? 'Unknown';
+          final cat = f['short_category']?.toString() ?? '';
+          final logic = f['return_logic']?.toString().trim() ?? '';
+          final isShariah = (f['is_shariah'] == 1 || f['is_shariah'] == '1' || f['is_shariah'] == true);
+          final displayName = '$name${isShariah ? " 🕌" : ""}';
+          
+          // --- THE PERFECT DELAY LOGIC ---
+          bool isStale = false;
+          if (f['last_validity_date'] != null) {
+            final dt = DateTime.tryParse(f['last_validity_date'].toString());
+            if (dt != null) {
+              final dOnly = DateTime(dt.year, dt.month, dt.day);
+              if (cat == 'Commodities') {
+                if (dOnly.isBefore(maxAbsoluteDate.subtract(const Duration(days: 1)))) {
+                  isStale = true;
+                }
+              } else if (cat == 'Money Market' || cat == 'Income' || logic == 'Annualized') {
+                if (dOnly.isBefore(maxAbsoluteDate)) {
+                  isStale = true;
+                }
+              } else {
+                if (dOnly.isBefore(maxAbsoluteDate)) {
+                  isStale = true;
+                }
+              }
+            } else {
+               isStale = true;
+            }
+          } else {
+             isStale = true;
+          }
+          
+          String validityDateStr = f['last_validity_date'] != null 
+              ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(f['last_validity_date'].toString()) ?? DateTime.now()) : 'N/A';
+          if (isStale) validityDateStr += ' (Delayed)';
+          Color validityColor = isStale ? Colors.redAccent.shade100 : Colors.white54;
+
+          final r1d = f['return_1d'];
+          final r2 = f[isLongTerm ? 'return_1y' : 'return_30d'];
+
+          String formatPkr(dynamic r) {
+            if (r == null) return 'N/A';
+            double val = (r as num).toDouble();
+            double pkr = 100000.0 * (val - 1.0);
+            final format = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
+            return '${pkr > 0 ? '+' : pkr < 0 ? '-' : ''}${format.format(pkr.abs())}';
+          }
+
+          Color getColor(dynamic r) {
+            if (r == null) return Colors.white54;
+            double val = (r as num).toDouble();
+            return val >= 1.0 ? Colors.greenAccent : Colors.redAccent;
+          }
+
+          // COMPACT 100px HEIGHT
+          return SizedBox(
+            height: 100, 
+            child: Container(
+              decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white12))),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 500, 
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 16.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(cat.toUpperCase(), style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+                              const SizedBox(width: 12),
+                              Text('•', style: GoogleFonts.poppins(color: Colors.white24, fontSize: 16)),
+                              const SizedBox(width: 12),
+                              Text(validityDateStr, style: GoogleFonts.poppins(color: validityColor, fontSize: 14, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(displayName, style: GoogleFonts.poppins(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600))),
+                        ],
+                      ),
+                    )
+                  ),
+                  SizedBox(
+                    width: 230, 
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        FittedBox(fit: BoxFit.scaleDown, child: Text(formatPkr(r1d), style: GoogleFonts.poppins(color: getColor(r1d), fontSize: 24, fontWeight: FontWeight.bold))),
+                        // Percentages REMOVED to save height space
+                      ]
+                    )
+                  ),
+                  SizedBox(
+                    width: 230, 
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        FittedBox(fit: BoxFit.scaleDown, child: Text(formatPkr(r2), style: GoogleFonts.poppins(color: getColor(r2), fontSize: 24, fontWeight: FontWeight.bold))),
+                        // Percentages REMOVED to save height space
+                      ]
+                    )
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        Widget reportCard = MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.noScaling),
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: OverflowBox(
+              minWidth: 1080, maxWidth: 1080,
+              minHeight: dynamicHeight, maxHeight: dynamicHeight,
+              alignment: Alignment.topCenter,
+              child: Material(
+                color: const Color(0xFF0F172A),
+                child: Container(
+                  width: 1080, height: dynamicHeight,
+                  alignment: Alignment.topCenter,
+                  padding: const EdgeInsets.all(60.0), 
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min, 
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: 120,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            SizedBox(
+                              width: 600,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  // FITTED BOX to prevent AMC name cutting
+                                  FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(amc, style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 48, fontWeight: FontWeight.bold))),
+                                  Text('Investment: PKR 1,00,000', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 24), maxLines: 1),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              decoration: BoxDecoration(color: Colors.tealAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.tealAccent)),
+                              child: Text('Bachat Vault', style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 28, fontWeight: FontWeight.w800)),
+                            )
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                      const Divider(color: Colors.white24, thickness: 2, height: 20),
+                      
+                      if (groupA.isNotEmpty) ...[
+                        SizedBox(
+                          height: 80,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              SizedBox(width: 500, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('Money Market & Income', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('1D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('30D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                            ],
+                          ),
+                        ),
+                        ...groupA.map((f) => buildFundRow(f, false)),
+                      ],
+
+                      if (groupA.isNotEmpty && groupB.isNotEmpty) const SizedBox(height: 40),
+
+                      if (groupB.isNotEmpty) ...[
+                        SizedBox(
+                          height: 80,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              SizedBox(width: 500, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('Equity, Balanced & ETFs', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('1D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('1Y Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                            ],
+                          ),
+                        ),
+                        ...groupB.map((f) => buildFundRow(f, true)),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        Uint8List capturedImage = await _screenshotController.captureFromWidget(
+          reportCard, 
+          delay: const Duration(milliseconds: 100),
+          targetSize: Size(1080, dynamicHeight),
+          pixelRatio: 1.0, 
+        );
+
+        await Gal.putImageBytes(capturedImage, name: 'BachatVault_AMC_${amc.replaceAll(' ', '')}');
+        imagesSaved++;
+      }
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $imagesSaved AMC Reports saved!'), backgroundColor: Colors.green, duration: const Duration(seconds: 4)));
+      }
+
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Widget _buildBenchmarkStat(String label, dynamic returnFactor) {
+    if (returnFactor == null) return const SizedBox.shrink();
+    double r = (returnFactor as num).toDouble();
+    double pct = (r - 1.0) * 100.0;
+    Color c = pct >= 0 ? Colors.greenAccent : Colors.redAccent;
+    String sign = pct > 0 ? '+' : '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 20)),
+        FittedBox(fit: BoxFit.scaleDown, child: Text('$sign${pct.toStringAsFixed(2)}%', style: GoogleFonts.poppins(color: c, fontSize: 32, fontWeight: FontWeight.bold))),
+      ],
+    );
+  }
+
+  // --- CUSTOM DATE RANGE ENGINE ---
   Future<void> _selectDate(BuildContext context, bool isStart) async {
+    final now = DateTime.now();
+    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final defaultStart = now.subtract(const Duration(days: 30));
+
+    DateTime initDate = isStart ? (_customStartDate ?? defaultStart) : (_customEndDate ?? now);
+
+    if (initDate.isAfter(todayEnd)) initDate = todayEnd;
+    if (initDate.isBefore(DateTime(2000))) initDate = DateTime(2000);
+
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: isStart ? (_customStartDate ?? DateTime.now().subtract(const Duration(days: 30))) : (_customEndDate ?? DateTime.now()),
+      initialDate: initDate,
       firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
+      lastDate: todayEnd,
       builder: (context, child) {
         return Theme(
           data: ThemeData.dark().copyWith(
@@ -264,72 +1067,54 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 
   Future<void> _calculateCustomReturns() async {
     if (_customStartDate == null || _customEndDate == null) return;
-    
     setState(() { _isCustomLoading = true; _customReturnsMap.clear(); });
     
     try {
       final supabase = Supabase.instance.client;
       final DateFormat dbFormat = DateFormat('yyyy-MM-dd');
 
-      // 1. Define our safe 7-day lookback windows
-      // --- THE FIX: Shift start date back 1 day to capture the true Base NAV ---
       DateTime trueBaseDate = _customStartDate!.subtract(const Duration(days: 1));
-      
       final startLimit = dbFormat.format(trueBaseDate.subtract(const Duration(days: 7)));
       final startTarget = dbFormat.format(trueBaseDate);
       
       final endLimit = dbFormat.format(_customEndDate!.subtract(const Duration(days: 7)));
       final endTarget = dbFormat.format(_customEndDate!);
-
-      // Grab all tickers currently displayed so we don't fetch data for funds we don't care about
       final List<String> targetTickers = _displayedFunds.map((f) => f['ticker'].toString()).toList();
       if (targetTickers.isEmpty) {
         setState(() { _isCustomLoading = false; });
         return;
       }
 
-      // 2. Fetch Start NAVs, End NAVs, and Payouts
-      // Using .inFilter() and direct awaits to keep Dart's type-checker happy
       final startData = await supabase.from('daily_nav')
           .select('ticker, nav, validity_date')
           .inFilter('ticker', targetTickers)
           .gte('validity_date', startLimit)
           .lte('validity_date', startTarget);
-          
       final endData = await supabase.from('daily_nav')
           .select('ticker, nav, validity_date')
           .inFilter('ticker', targetTickers)
           .gte('validity_date', endLimit)
           .lte('validity_date', endTarget);
-          
       final payoutData = await supabase.from('payout_history')
           .select('ticker, payout_amount, ex_nav, payout_date')
           .inFilter('ticker', targetTickers)
           .gte('payout_date', startTarget)
           .lte('payout_date', endTarget);
-
-      // 3. Helper function to find the most recent NAV in the 7-day window
       double? getLatestNav(List<dynamic> rows, String ticker) {
         var tickerRows = rows.where((r) => r['ticker'] == ticker).toList();
         if (tickerRows.isEmpty) return null;
-        // Sort descending so the most recent date is at index 0
         tickerRows.sort((a, b) => b['validity_date'].toString().compareTo(a['validity_date'].toString()));
         return (tickerRows[0]['nav'] as num).toDouble();
       }
 
-      // 4. THE COMPOUNDING LOOP
       Map<String, double> newCalculations = {};
-
       for (String ticker in targetTickers) {
         double? startNav = getLatestNav(startData, ticker);
         double? endNav = getLatestNav(endData, ticker);
 
-        // If the fund didn't exist yet, we skip it
         if (startNav == null || endNav == null || startNav <= 0) continue;
-
         double currentUnits = 1.0;
         
-        // Reinvest any payouts that happened in this timeframe
         var specificPayouts = payoutData.where((p) => p['ticker'] == ticker).toList();
         for (var p in specificPayouts) {
           double pAmt = (p['payout_amount'] as num).toDouble();
@@ -339,19 +1124,16 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
           }
         }
 
-        // Calculate the Final Return Factor (e.g., 1.05 = 5% profit)
         double finalValue = currentUnits * endNav;
         double returnFactor = finalValue / startNav;
         
         newCalculations[ticker] = returnFactor;
       }
 
-      // 5. Save the results and trigger a UI sort
       setState(() {
         _customReturnsMap = newCalculations;
       });
-      _applyFiltersAsync(); // Re-sort the list based on the new numbers!
-
+      _applyFiltersAsync(); 
     } catch (e) {
       debugPrint("Error calculating custom returns: $e");
     } finally {
@@ -362,15 +1144,25 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   @override
   Widget build(BuildContext context) {
     final sortKey = _getSortKey();
-
     return Theme(
       data: Theme.of(context).copyWith(textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme)),
       child: Scaffold(
         extendBodyBehindAppBar: true,
         appBar: AppBar(
-          title: const Text('Performance', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white, fontSize: 20)),
+          title: GestureDetector(
+            onTap: _handleSecretTap, 
+            child: const Text('Performance', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white, fontSize: 20))
+          ),
+          
           backgroundColor: Colors.transparent, elevation: 0, leading: const BackButton(color: Colors.white),
           actions: [
+            if (_isAdmin)
+              IconButton(
+                icon: const Icon(Icons.camera_alt_outlined, color: Colors.amberAccent),
+                onPressed: _showExportMenu, 
+                tooltip: 'Export Reports',
+              ),
+            
             Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: TextButton.icon(
@@ -399,7 +1191,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // --- NEW: SEARCH BAR & FAVORITES TOGGLE ---
                       Row(
                         children: [
                           Expanded(
@@ -441,7 +1232,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Investment Amount and AMC Dropdown
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -486,7 +1276,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                       ),
                       const SizedBox(height: 12),
                       
-                      // Fund Type and Category
                       Row(
                         children: [
                           Expanded(
@@ -532,7 +1321,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // Time Periods List
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         physics: const BouncingScrollPhysics(),
@@ -561,7 +1349,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                         ),
                       ),
 
-                      // --- NEW: CUSTOM DATE UI EXPANSION ---
                       if (_selectedPeriod == 'Custom')
                         Padding(
                           padding: const EdgeInsets.only(top: 12.0),
@@ -607,7 +1394,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                             ),
                           ),
                         ),
-                      
                     ],
                   ),
                 ),
@@ -631,26 +1417,16 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                             final riskProfile = fund['risk_profile'] ?? '';
                             final isShariah = (fund['is_shariah'] == 1 || fund['is_shariah'] == '1' || fund['is_shariah'] == true);
                             
-                            // Return calculation math
-                            final returnFactor = _selectedPeriod == 'Custom' 
-      ? (_customReturnsMap[ticker] ?? 1.0) 
-      : (fund[sortKey] as num?)?.toDouble() ?? 1.0;
-      
-  final double percent = _selectedPeriod == 'Custom' && !_customReturnsMap.containsKey(ticker) 
-      ? 0.0 
-      : (returnFactor - 1.0) * 100.0;
-      
-  final double profitValue = _selectedPeriod == 'Custom' && !_customReturnsMap.containsKey(ticker) 
-      ? 0.0 
-      : _investmentAmount * (returnFactor - 1.0);
+                            final returnFactor = _selectedPeriod == 'Custom' ? (_customReturnsMap[ticker] ?? 1.0) : (fund[sortKey] as num?)?.toDouble() ?? 1.0;
+                            final double percent = _selectedPeriod == 'Custom' && !_customReturnsMap.containsKey(ticker) ? 0.0 : (returnFactor - 1.0) * 100.0;
+                            final double profitValue = _selectedPeriod == 'Custom' && !_customReturnsMap.containsKey(ticker) ? 0.0 : _investmentAmount * (returnFactor - 1.0);
                             
                             String profitString = _currencyFormat.format(profitValue.abs());
                             String formattedValueDisplay = profitValue > 0 ? '+$profitString' : profitValue < 0 ? '-$profitString' : '0';
                             String percentageString = '${percent > 0 ? '+' : ''}${percent.toStringAsFixed(2)}%';
                             Color statColor = percent > 0 ? Colors.greenAccent : percent < 0 ? Colors.redAccent.shade100 : Colors.white70;
-
                             final lastValidityDate = fund['last_validity_date'] != null ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(fund['last_validity_date'].toString()) ?? DateTime.now()) : 'N/A';
-
+                            
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 10),
                               child: InkWell(
@@ -687,7 +1463,8 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                                                     crossAxisAlignment: CrossAxisAlignment.end,
                                                     children: [
                                                       Text(formattedValueDisplay, textAlign: TextAlign.right, style: TextStyle(color: statColor, fontSize: 15, fontWeight: FontWeight.w800, fontFeatures: const [FontFeature.tabularFigures()])),
-                                                      if (_selectedPeriod == 'Custom') const Text('Pending...', style: TextStyle(color: Colors.white54, fontSize: 10))
+                                                      if (_selectedPeriod == 'Custom') 
+                                                        Text(_isCustomLoading ? 'Calculating...' : (!_customReturnsMap.containsKey(ticker) ? 'No Data' : ''), style: const TextStyle(color: Colors.white54, fontSize: 10))
                                                     ],
                                                   )
                                                 )
@@ -699,8 +1476,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                                               children: [
                                                 Expanded(flex: 7, child: Row(children: [if (riskProfile.toString().isNotEmpty) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), margin: const EdgeInsets.only(right: 6), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: Text('Risk: $riskProfile', style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.w600))), Expanded(child: Text(category.toString(), style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis))])), 
                                                 const SizedBox(width: 8), 
-                                                
-                                                // --- NEW: THE HEART ICON ---
                                                 Row(
                                                   children: [
                                                     Text('($percentageString)', textAlign: TextAlign.right, style: TextStyle(color: statColor, fontSize: 11, fontWeight: FontWeight.w700, fontFeatures: const [FontFeature.tabularFigures()])),
@@ -733,7 +1508,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   }
 }
 
-// Ensure your IndianNumberFormatter class remains at the bottom of the file exactly as you had it!
 class IndianNumberFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {

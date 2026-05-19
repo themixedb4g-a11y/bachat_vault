@@ -6,7 +6,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; 
 
-// IMPORTANT: Ensure this import points to your new Index Investing file!
 import 'package:bachat_vault/screens/index_investing_screen.dart';
 
 // ============================================================================
@@ -89,6 +88,7 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
     return Theme(
       data: Theme.of(context).copyWith(
         textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme),
@@ -127,17 +127,11 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 16),
-                  const Text(
-                    'Select a Tool',
-                    style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 20),
                   
-                  // Tool 1: Financial Calculators
                   _buildToolCard(
                     context: context,
                     title: 'Financial Calculators',
-                    subtitle: 'Plan your Lumpsum, SIP, SWP, and FIRE goals.',
+                    subtitle: 'Plan your SIP, SWP, and FIRE goals. Calculate your VPS Tax Credit',
                     icon: Icons.calculate_rounded,
                     accentColor: Colors.tealAccent,
                     destinationScreen: const FinancialCalculatorsScreen(),
@@ -145,13 +139,12 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
                   
                   const SizedBox(height: 16),
                   
-                  // Tool 2: Index Investing
                   _buildToolCard(
                     context: context,
-                    title: 'DIY Index Portfolio',
+                    title: '✨ Index Tracker',
                     subtitle: 'Index Investing for KSE100, KMI30 & PSXDIV20.',
                     icon: Icons.pie_chart_rounded,
-                    accentColor: Colors.amberAccent, // Keeping the distinct amber color
+                    accentColor: Colors.amberAccent, 
                     destinationScreen: const IndexInvestingScreen(),
                   ),
                 ],
@@ -228,7 +221,7 @@ class _FinancialCalculatorsScreenState extends State<FinancialCalculatorsScreen>
                 dividerColor: Colors.transparent,
                 tabAlignment: TabAlignment.center,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                tabs: const [Tab(text: 'Lumpsum'), Tab(text: 'SIP'), Tab(text: 'SWP'), Tab(text: 'FIRE')],
+                tabs: const [Tab(text: 'SIP'), Tab(text: 'VPS'), Tab(text: 'SWP'), Tab(text: 'FIRE')],
               ),
             ),
           ),
@@ -246,7 +239,7 @@ class _FinancialCalculatorsScreenState extends State<FinancialCalculatorsScreen>
             bottom: false,
             child: TabBarView(
               controller: _tabController,
-              children: const [LumpsumCalculator(), SipCalculator(), SwpCalculator(), FireCalculator()],
+              children: const [SipCalculator(), VpsTaxCalculator(), SwpCalculator(), FireCalculator()],
             ),
           ),
         ),
@@ -256,26 +249,26 @@ class _FinancialCalculatorsScreenState extends State<FinancialCalculatorsScreen>
 }
 
 // ============================================================================
-// 3. CALCULATOR WIDGETS (Kept exactly as you had them)
+// 3. VPS TAX CREDIT CALCULATOR (MONTHLY FIXED)
 // ============================================================================
-
-// --- LUMPSUM CALCULATOR ---
-class LumpsumCalculator extends StatefulWidget {
-  const LumpsumCalculator({super.key});
+class VpsTaxCalculator extends StatefulWidget {
+  const VpsTaxCalculator({super.key});
   @override
-  State<LumpsumCalculator> createState() => _LumpsumCalculatorState();
+  State<VpsTaxCalculator> createState() => _VpsTaxCalculatorState();
 }
 
-class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKeepAliveClientMixin {
-  final TextEditingController _amountController = TextEditingController(text: '10,00,000');
-  final TextEditingController _rateController = TextEditingController(text: '16');
-  final TextEditingController _yearsController = TextEditingController(text: '10');
-  final TextEditingController _inflationController = TextEditingController(text: '0'); 
+class _VpsTaxCalculatorState extends State<VpsTaxCalculator> with AutomaticKeepAliveClientMixin {
+  final TextEditingController _monthlySalaryController = TextEditingController(text: '3,00,000');
+  final TextEditingController _vpsInvController = TextEditingController(text: '5,00,000');
 
-  double _totalInvested = 0; 
-  double _estimatedReturns = 0; 
-  double _totalValue = 0;
-  double _adjustedTotalValue = 0; 
+  double _grossSalary = 0;
+  double _incomeTaxMonthly = 0;
+  double _taxCreditMonthly = 0;
+  double _netIncomeTaxMonthly = 0;
+  double _takeHomeAnnual = 0;
+  double _takeHomeMonthly = 0;
+  double _avgTaxRate = 0;
+  double _maxEligibleInvestment = 0;
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
@@ -283,30 +276,62 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
   bool get wantKeepAlive => true;
 
   @override
-  void initState() { super.initState(); _calculate(); }
-
-  void _calculate() {
-    final double principal = double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
-    final double rate = double.tryParse(_rateController.text.replaceAll(',', '')) ?? 0;
-    final double years = double.tryParse(_yearsController.text.replaceAll(',', '')) ?? 0;
-    final double inflation = double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0; 
-
-    if (principal > 0 && years > 0) {
-      final double finalValue = principal * pow((1 + (rate / 100)), years);
-      final double adjustedValue = inflation > 0 ? finalValue / pow((1 + (inflation / 100)), years) : finalValue;
-
-      setState(() { 
-        _totalInvested = principal; 
-        _totalValue = finalValue; 
-        _estimatedReturns = finalValue - principal; 
-        _adjustedTotalValue = adjustedValue; 
-      });
-    } else {
-      setState(() { _totalInvested = 0; _totalValue = 0; _estimatedReturns = 0; _adjustedTotalValue = 0; });
-    }
+  void initState() {
+    super.initState();
+    _calculate();
   }
 
-  Widget _buildField({required String label, required String prefix, required String suffix, required TextEditingController controller, bool isCurrency = false}) {
+  void _calculate() {
+    final double monthlySalary = double.tryParse(_monthlySalaryController.text.replaceAll(',', '')) ?? 0;
+    final double vpsInvestment = double.tryParse(_vpsInvController.text.replaceAll(',', '')) ?? 0;
+
+    double gross = monthlySalary * 12;
+    double tax = 0;
+
+    if (gross <= 600000) {
+      tax = 0;
+    } else if (gross <= 1200000) {
+      tax = (gross - 600000) * 0.01;
+    } else if (gross <= 2200000) {
+      tax = 6000 + (gross - 1200000) * 0.11;
+    } else if (gross <= 3200000) {
+      tax = 116000 + (gross - 2200000) * 0.23;
+    } else if (gross <= 4100000) {
+      tax = 346000 + (gross - 3200000) * 0.30;
+    } else if (gross <= 10000000) {
+      tax = 616000 + (gross - 4100000) * 0.35;
+    } else {
+      tax = 2681000 + (gross - 10000000) * 0.35;
+      tax = tax * 1.09; 
+    }
+
+    double avgRate = gross > 0 ? (tax / gross) : 0;
+    double maxEligible = gross * 0.20;
+    
+    double eligibleInvestment = min(vpsInvestment, maxEligible);
+    double taxCredit = avgRate * eligibleInvestment;
+    
+    double netTax = tax - taxCredit;
+    if (netTax < 0) netTax = 0; 
+    
+    double takeHomeAnnual = gross - netTax;
+    
+    setState(() {
+      _grossSalary = gross;
+      _avgTaxRate = avgRate * 100; 
+      _maxEligibleInvestment = maxEligible;
+      
+      // Converted to Monthly exactly as requested
+      _incomeTaxMonthly = tax / 12;
+      _taxCreditMonthly = taxCredit / 12;
+      _netIncomeTaxMonthly = netTax / 12;
+      
+      _takeHomeAnnual = takeHomeAnnual;
+      _takeHomeMonthly = takeHomeAnnual / 12;
+    });
+  }
+
+  Widget _buildField({required String label, required String prefix, required TextEditingController controller}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -316,10 +341,10 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
           decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.1))),
           child: TextField(
             controller: controller, keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: isCurrency ? [IndianNumberFormatter()] : [],
+            inputFormatters: [LengthLimitingTextInputFormatter(12), IndianNumberFormatter()],
             style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             onChanged: (val) => _calculate(),
-            decoration: InputDecoration(prefixText: prefix.isNotEmpty ? '$prefix ' : null, prefixStyle: const TextStyle(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.bold), suffixText: suffix.isNotEmpty ? ' $suffix' : null, suffixStyle: const TextStyle(color: Colors.white54, fontSize: 14), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16)),
+            decoration: InputDecoration(prefixText: prefix.isNotEmpty ? '$prefix ' : null, prefixStyle: const TextStyle(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.bold), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16)),
           ),
         ),
       ],
@@ -329,13 +354,12 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final bool showInflation = (double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0) > 0;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          const Padding(padding: EdgeInsets.only(bottom: 16.0, top: 8.0), child: Text('Lumpsum Investment Calculator', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+          const Padding(padding: EdgeInsets.only(bottom: 16.0, top: 8.0), child: Text('VPS Tax Credit Calculator', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
             child: BackdropFilter(
@@ -345,30 +369,9 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
                 decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.1))),
                 child: Column(
                   children: [
-                    _buildField(label: 'Lumpsum Amount', prefix: 'PKR', suffix: '', controller: _amountController, isCurrency: true), const SizedBox(height: 16),
-                    Row(children: [Expanded(child: _buildField(label: 'Expected Return', prefix: '', suffix: '%', controller: _rateController)), const SizedBox(width: 16), Expanded(child: _buildField(label: 'Time Period', prefix: '', suffix: 'Years', controller: _yearsController))]),
+                    _buildField(label: 'Your Monthly Salary', prefix: 'PKR', controller: _monthlySalaryController),
                     const SizedBox(height: 16),
-                    Theme(
-                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                      child: ExpansionTile(
-                        tilePadding: EdgeInsets.zero,
-                        collapsedIconColor: Colors.white54,
-                        iconColor: Colors.tealAccent,
-                        title: const Row(
-                          children: [
-                            Icon(Icons.settings_outlined, color: Colors.tealAccent, size: 18),
-                            SizedBox(width: 8),
-                            Text('Advanced Settings', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
-                            child: Row(children: [Expanded(child: _buildField(label: 'Inflation P.A.', prefix: '', suffix: '%', controller: _inflationController)), const SizedBox(width: 16), const Spacer()]),
-                          ),
-                        ],
-                      ),
-                    ),
+                    _buildField(label: 'Annual Investment in VPS', prefix: 'PKR', controller: _vpsInvController),
                   ],
                 ),
               ),
@@ -384,19 +387,33 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
                 decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.teal.withOpacity(0.1), Colors.tealAccent.withOpacity(0.05)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.tealAccent.withOpacity(0.3))),
                 child: Column(
                   children: [
-                    _buildResultRow('Total Invested', 'PKR ${_currencyFormat.format(_totalInvested)}', Colors.white), const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white12)),
-                    _buildResultRow('Estimated Returns', '+PKR ${_currencyFormat.format(_estimatedReturns)}', Colors.greenAccent), const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white12)),
-                    _buildResultRow('Total Value', 'PKR ${_currencyFormat.format(_totalValue)}', Colors.tealAccent, isTotal: true),
-                    if (showInflation) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+                    _buildResultRow('Gross Annual Salary', 'PKR ${_currencyFormat.format(_grossSalary)}', Colors.white), 
+                    const SizedBox(height: 4),
+                    _buildResultRow('Avg Tax Rate', '${_avgTaxRate.toStringAsFixed(2)}%', Colors.white54, isSubText: true),
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white12)),
+                    
+                    _buildResultRow('Max Eligible Investment (20%)', 'PKR ${_currencyFormat.format(_maxEligibleInvestment)}', Colors.amberAccent), 
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white12)),
+                    
+                    _buildResultRow('Original Monthly Tax', 'PKR ${_currencyFormat.format(_incomeTaxMonthly)}', Colors.redAccent.shade100), 
+                    const SizedBox(height: 8),
+                    _buildResultRow('Monthly Tax Credit', 'PKR ${_currencyFormat.format(_taxCreditMonthly)}', Colors.greenAccent), 
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white12)),
+                    
+                    _buildResultRow('Net Monthly Income Tax', 'PKR ${_currencyFormat.format(_netIncomeTaxMonthly)}', Colors.white, isTotal: true), 
+                    const SizedBox(height: 16),
+                    
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: Colors.tealAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.tealAccent.withOpacity(0.3))),
+                      child: Column(
                         children: [
-                          const Text('Inflation Adjusted: ', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w500)),
-                          Text('PKR ${_currencyFormat.format(_adjustedTotalValue)}', style: const TextStyle(color: Colors.orangeAccent, fontSize: 13, fontWeight: FontWeight.w700)),
+                          _buildResultRow('Net Monthly Take-Home', 'PKR ${_currencyFormat.format(_takeHomeMonthly)}', Colors.tealAccent, isTotal: true),
+                          const SizedBox(height: 8),
+                          _buildResultRow('Net Annual Take-Home', 'PKR ${_currencyFormat.format(_takeHomeAnnual)}', Colors.tealAccent.shade100, isSubText: true),
                         ],
                       ),
-                    ]
+                    ),
                   ],
                 ),
               ),
@@ -407,12 +424,21 @@ class _LumpsumCalculatorState extends State<LumpsumCalculator> with AutomaticKee
     );
   }
 
-  Widget _buildResultRow(String label, String value, Color valueColor, {bool isTotal = false}) {
-    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(color: Colors.white70, fontSize: isTotal ? 16 : 14, fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500)), Text(value, style: TextStyle(color: valueColor, fontSize: isTotal ? 22 : 16, fontWeight: FontWeight.bold))]);
+  Widget _buildResultRow(String label, String value, Color valueColor, {bool isTotal = false, bool isSubText = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+      children: [
+        Expanded(child: Text(label, style: TextStyle(color: isSubText ? Colors.white54 : Colors.white70, fontSize: isTotal ? 14 : isSubText ? 11 : 12, fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500))), 
+        const SizedBox(width: 8),
+        Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight, child: Text(value, style: TextStyle(color: valueColor, fontSize: isTotal ? 20 : isSubText ? 12 : 15, fontWeight: FontWeight.bold))))
+      ]
+    );
   }
 }
 
-// --- SIP CALCULATOR ---
+// ============================================================================
+// 4. COMBINED SIP & LUMPSUM CALCULATOR
+// ============================================================================
 class SipCalculator extends StatefulWidget {
   const SipCalculator({super.key});
   @override
@@ -420,16 +446,17 @@ class SipCalculator extends StatefulWidget {
 }
 
 class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveClientMixin {
+  final TextEditingController _lumpsumController = TextEditingController(text: '0');
   final TextEditingController _amountController = TextEditingController(text: '10,000');
-  final TextEditingController _stepUpController = TextEditingController(text: '10');
   final TextEditingController _rateController = TextEditingController(text: '16');
   final TextEditingController _yearsController = TextEditingController(text: '10');
-  final TextEditingController _inflationController = TextEditingController(text: '0'); 
+  final TextEditingController _stepUpController = TextEditingController(text: '10');
+  final TextEditingController _inflationController = TextEditingController(text: '0');
 
   double _totalInvested = 0; 
   double _estimatedReturns = 0; 
   double _totalValue = 0;
-  double _adjustedTotalValue = 0; 
+  double _adjustedTotalValue = 0;
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
@@ -445,8 +472,39 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
   @override
   void initState() { 
     super.initState(); 
+    
+    // THE FIX: Listen to changes and validate the selected fund
+    _yearsController.addListener(() { 
+      setState(() {
+        _validateSelectedFund();
+      }); 
+    });
+
     _calculate(); 
-    _fetchFundsData(); 
+    _fetchFundsData();
+  }
+
+  // THE FIX: Safe-check to prevent Dropdown crash
+  void _validateSelectedFund() {
+    if (_selectedFundTicker == null || _allFunds.isEmpty) return;
+
+    int targetYears = int.tryParse(_yearsController.text.replaceAll(',', '')) ?? 0;
+    
+    bool isValid = _allFunds.where((f) {
+      if (_selectedCategory != 'All' && (f['short_category'] ?? f['category']) != _selectedCategory) return false;
+      if (targetYears > 0) {
+        DateTime? incDate = f['inception_date'];
+        if (incDate != null) {
+          double ageYears = DateTime.now().difference(incDate).inDays / 365.25;
+          if (ageYears < (targetYears - 1.0)) return false; 
+        }
+      }
+      return true;
+    }).any((f) => f['ticker'] == _selectedFundTicker);
+
+    if (!isValid) {
+      _selectedFundTicker = null;
+    }
   }
 
   final Map<String, String> categoryMap = {
@@ -469,20 +527,6 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     'Dedicated Equity': 'Equity', 'Shariah Compliant Dedicated Equity': 'Equity',
   };
 
-  final Map<String, String> amcMap = {
-    '786 Investments Limited': '786 Investments', 'ABL Asset Management Company Limited': 'ABL Funds',
-    'AKD Investment Management Limited': 'AKD Investment Management', 'Al Habib Asset Management Limited': 'Al Habib Asset Management',
-    'Al Meezan Investment Management Limited': 'Al Meezan Investments', 'Alfalah Asset Management Limited': 'Alfalah Asset Management',
-    'Atlas Asset Management Limited': 'Atlas Asset Management', 'AWT Investments Limited': 'AWT Investments',
-    'Faysal Asset Management Limited': 'Faysal Funds', 'First Capital Investments Limited': 'First Capital Investments',
-    'HBL Asset Management Limited': 'HBL Asset Management', 'JS Investments Limited': 'JS Investments',
-    'Lakson Investments Limited': 'Lakson Investments', 'Lucky Investments Limited': 'Lucky Investments',
-    'Mahaana Wealth Limited': 'Mahaana Wealth', 'MCB Investment Management Limited': 'MCB Funds',
-    'National Investment Trust Limited': 'National Investment Trust', 'NBP Fund Management Limited': 'NBP Funds',
-    'Pak Oman Asset Management Company Limited': 'Pak Oman Asset Management', 'Pak-Qatar Asset Management Company Limited': 'Pak Qatar Asset Management',
-    'EFU Life Insurance Limited': 'EFU Life Insurance', 'UBL Fund Managers Limited': 'UBL Funds',
-  };
-
   String _cleanFundName(String name) {
     if (name.isEmpty) return name;
     return name
@@ -499,14 +543,15 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
         .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
-        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)", "Faysal Nu'umah Women Savers Plan")
+        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)", "Faysal Nu'umah Women Savers Plan")
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
-        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)", "Faysal Barak'ah Women Savers Plan")
+        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)", "Faysal Barak'ah Women Savers Plan")
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
+        .replaceAll('Faysal Islamic Asset Allocation Fund IV (Faysal Shariah Flex Plan IV)', 'Faysal Shariah Flex Plan IV')
         .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan I)', 'Faysal Islamic Financial Growth Plan I')
         .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan II)', 'Faysal Islamic Financial Growth Plan II')
         .replaceAll('Atlas Islamic Fund of Funds (Atlas Aggressive Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Aggressive)')
@@ -551,8 +596,9 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
 
   Future<void> _fetchFundsData() async {
     final SupabaseClient supabase = Supabase.instance.client;
+
     try {
-      final masterResponse = await supabase.from('master_funds').select('ticker, fund_name, category');
+      final masterResponse = await supabase.from('master_funds').select('ticker, fund_name, category, inception_date');
       final statsResponse = await supabase.from('performance_stats').select('ticker, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y');
 
       List<Map<String, dynamic>> combined = [];
@@ -567,6 +613,11 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
 
         final ticker = mf['ticker'];
         final stats = statsResponse.firstWhere((s) => s['ticker'] == ticker, orElse: () => <String, dynamic>{});
+        
+        DateTime? incDate;
+        if (mf['inception_date'] != null) {
+          incDate = DateTime.tryParse(mf['inception_date'].toString());
+        }
 
         combined.add({
           'ticker': ticker,
@@ -574,6 +625,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
           'short_name': _cleanFundName(rawName),
           'category': rawCat,
           'short_category': mappedCat,
+          'inception_date': incDate,
           'return_1y': stats['return_1y'],
           'return_3y': stats['return_3y'],
           'return_5y': stats['return_5y'],
@@ -581,7 +633,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
           'return_15y': stats['return_15y'],
           'return_20y': stats['return_20y'],
         });
-        
+
         if (mappedCat.isNotEmpty) catSet.add(mappedCat);
       }
 
@@ -601,22 +653,29 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
   }
 
   void _calculate() {
+    final double initialLumpsum = double.tryParse(_lumpsumController.text.replaceAll(',', '')) ?? 0;
     final double initialMonthlyInvestment = double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
     final double stepUpPercentage = double.tryParse(_stepUpController.text.replaceAll(',', '')) ?? 0;
     final double expectedReturn = double.tryParse(_rateController.text.replaceAll(',', '')) ?? 0;
     final double years = double.tryParse(_yearsController.text.replaceAll(',', '')) ?? 0;
-    final double inflation = double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0; 
+    final double inflation = double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0;
 
-    if (initialMonthlyInvestment > 0 && years > 0) {
-      double totalBalance = 0; double totalInvested = 0; double currentMonthlySip = initialMonthlyInvestment;
-      double monthlyRate = (expectedReturn / 100) / 12; int totalMonths = (years * 12).toInt();
+    if ((initialMonthlyInvestment > 0 || initialLumpsum > 0) && years > 0) {
+      double totalBalance = initialLumpsum;
+      double totalInvested = initialLumpsum; 
+      double currentMonthlySip = initialMonthlyInvestment;
+      double monthlyRate = (expectedReturn / 100) / 12;
+      int totalMonths = (years * 12).toInt();
 
       for (int month = 1; month <= totalMonths; month++) {
-        totalInvested += currentMonthlySip; totalBalance += currentMonthlySip; totalBalance += totalBalance * monthlyRate;
+        totalInvested += currentMonthlySip;
+        totalBalance += currentMonthlySip; 
+        totalBalance += totalBalance * monthlyRate;
         if (month % 12 == 0) currentMonthlySip += currentMonthlySip * (stepUpPercentage / 100);
       }
       
-      final double adjustedValue = inflation > 0 ? totalBalance / pow((1 + (inflation / 100)), years) : totalBalance;
+      final double adjustedValue = inflation > 0 ?
+        totalBalance / pow((1 + (inflation / 100)), years) : totalBalance;
 
       setState(() { 
         _totalInvested = totalInvested; 
@@ -679,7 +738,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
     
     _rateController.text = cagr.toStringAsFixed(2);
     _calculate();
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Auto-filled Expected Return using the closest match: $bestYears-Year historical average (${cagr.toStringAsFixed(2)}%)', style: const TextStyle(color: Colors.white)), 
@@ -699,7 +758,7 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
           decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.1))),
           child: TextField(
             controller: controller, keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: isCurrency ? [IndianNumberFormatter()] : [],
+            inputFormatters: isCurrency ? [LengthLimitingTextInputFormatter(12), IndianNumberFormatter()] : [LengthLimitingTextInputFormatter(6)],
             style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             onChanged: (val) => _calculate(),
             decoration: InputDecoration(prefixText: prefix.isNotEmpty ? '$prefix ' : null, prefixStyle: const TextStyle(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.bold), suffixText: suffix.isNotEmpty ? ' $suffix' : null, suffixStyle: const TextStyle(color: Colors.white54, fontSize: 14), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16)),
@@ -739,17 +798,29 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
     final bool showInflation = (double.tryParse(_inflationController.text.replaceAll(',', '')) ?? 0) > 0;
-    
-    List<Map<String, dynamic>> filteredFunds = _selectedCategory == 'All' 
-        ? _allFunds 
-        : _allFunds.where((f) => (f['short_category'] ?? f['category']) == _selectedCategory).toList();
+    int targetYears = int.tryParse(_yearsController.text.replaceAll(',', '')) ?? 0;
+
+    List<Map<String, dynamic>> filteredFunds = _allFunds.where((f) {
+      if (_selectedCategory != 'All' && (f['short_category'] ?? f['category']) != _selectedCategory) {
+        return false;
+      }
+      if (targetYears > 0) {
+        DateTime? incDate = f['inception_date'];
+        if (incDate != null) {
+          double ageYears = DateTime.now().difference(incDate).inDays / 365.25;
+          if (ageYears < (targetYears - 1.0)) return false; 
+        }
+      }
+      return true;
+    }).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          const Padding(padding: EdgeInsets.only(bottom: 16.0, top: 8.0), child: Text('Systematic Investment Plan Calculator', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+          const Padding(padding: EdgeInsets.only(bottom: 16.0, top: 8.0), child: Text('SIP Calculator', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
             child: BackdropFilter(
@@ -759,33 +830,25 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
                 decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.1))),
                 child: Column(
                   children: [
-                    Row(children: [Expanded(child: _buildField(label: 'Monthly Investment', prefix: 'PKR', suffix: '', controller: _amountController, isCurrency: true)), const SizedBox(width: 16), Expanded(child: _buildField(label: 'Annual Step-up', prefix: '', suffix: '%', controller: _stepUpController))]), const SizedBox(height: 16),
-                    Row(children: [Expanded(child: _buildField(label: 'Expected Return', prefix: '', suffix: '%', controller: _rateController)), const SizedBox(width: 16), Expanded(child: _buildField(label: 'Time Period', prefix: '', suffix: 'Years', controller: _yearsController))]),
-                    
+                    Row(children: [
+                      Expanded(child: _buildField(label: 'Initial Lumpsum', prefix: 'PKR', suffix: '', controller: _lumpsumController, isCurrency: true)), 
+                      const SizedBox(width: 16), 
+                      Expanded(child: _buildField(label: 'Monthly SIP', prefix: 'PKR', suffix: '', controller: _amountController, isCurrency: true))
+                    ]), 
                     const SizedBox(height: 16),
-                    Theme(
-                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                      child: ExpansionTile(
-                        tilePadding: EdgeInsets.zero,
-                        collapsedIconColor: Colors.white54,
-                        iconColor: Colors.tealAccent,
-                        title: const Row(
-                          children: [
-                            Icon(Icons.settings_outlined, color: Colors.tealAccent, size: 18),
-                            SizedBox(width: 8),
-                            Text('Advanced Settings', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
-                            child: Row(children: [Expanded(child: _buildField(label: 'Inflation P.A.', prefix: '', suffix: '%', controller: _inflationController)), const SizedBox(width: 16), const Spacer()]),
-                          ),
-                        ],
-                      ),
-                    ),
+                    Row(children: [
+                      Expanded(child: _buildField(label: 'Expected Return', prefix: '', suffix: '%', controller: _rateController)), 
+                      const SizedBox(width: 16), 
+                      Expanded(child: _buildField(label: 'Time Period', prefix: '', suffix: 'Years', controller: _yearsController))
+                    ]), 
+                    const SizedBox(height: 16),
+                    Row(children: [
+                      Expanded(child: _buildField(label: 'Annual Step-up', prefix: '', suffix: '%', controller: _stepUpController)), 
+                      const SizedBox(width: 16), 
+                      Expanded(child: _buildField(label: 'Inflation P.A.', prefix: '', suffix: '%', controller: _inflationController))
+                    ]),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     const Divider(color: Colors.white12),
                     const SizedBox(height: 12),
                     const Text('Or auto-fill Expected Return from a specific fund:', style: TextStyle(color: Colors.tealAccent, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
@@ -802,7 +865,10 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
                               label: 'Category',
                               value: _selectedCategory,
                               items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c, overflow: TextOverflow.ellipsis))).toList(),
-                              onChanged: _onCategoryChanged,
+                              onChanged: (val) {
+                                _onCategoryChanged(val);
+                                _validateSelectedFund(); // Validate immediately on change
+                              },
                             )
                           ),
                           const SizedBox(width: 12),
@@ -847,7 +913,8 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           const Text('Inflation Adjusted: ', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w500)),
-                          Text('PKR ${_currencyFormat.format(_adjustedTotalValue)}', style: const TextStyle(color: Colors.orangeAccent, fontSize: 13, fontWeight: FontWeight.w700)),
+                          const SizedBox(width: 8),
+                          Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text('PKR ${_currencyFormat.format(_adjustedTotalValue)}', style: const TextStyle(color: Colors.orangeAccent, fontSize: 13, fontWeight: FontWeight.w700)))),
                         ],
                       ),
                     ]
@@ -862,7 +929,14 @@ class _SipCalculatorState extends State<SipCalculator> with AutomaticKeepAliveCl
   }
 
   Widget _buildResultRow(String label, String value, Color valueColor, {bool isTotal = false}) {
-    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(color: Colors.white70, fontSize: isTotal ? 16 : 14, fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500)), Text(value, style: TextStyle(color: valueColor, fontSize: isTotal ? 22 : 16, fontWeight: FontWeight.bold))]);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+      children: [
+        Expanded(child: Text(label, style: TextStyle(color: Colors.white70, fontSize: isTotal ? 16 : 14, fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500))), 
+        const SizedBox(width: 8),
+        Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight, child: Text(value, style: TextStyle(color: valueColor, fontSize: isTotal ? 22 : 16, fontWeight: FontWeight.bold))))
+      ]
+    );
   }
 }
 
@@ -881,6 +955,7 @@ class _SwpCalculatorState extends State<SwpCalculator> with AutomaticKeepAliveCl
   final TextEditingController _yearsController = TextEditingController(text: '25');
 
   double _totalWithdrawn = 0; double _finalBalance = 0; int _monthsLasted = 0; bool _survived = true;
+
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
   @override
@@ -897,12 +972,14 @@ class _SwpCalculatorState extends State<SwpCalculator> with AutomaticKeepAliveCl
     final double years = double.tryParse(_yearsController.text.replaceAll(',', '')) ?? 0;
 
     if (totalInvestment > 0 && initialMonthlyWithdrawal > 0 && years > 0) {
-      double balance = totalInvestment; double currentWithdrawal = initialMonthlyWithdrawal; double totalWithdrawn = 0;
+      double balance = totalInvestment;
+      double currentWithdrawal = initialMonthlyWithdrawal; double totalWithdrawn = 0;
       double monthlyRate = (expectedReturn / 100) / 12; int monthsLasted = 0;
       int totalMonths = (years * 12).toInt(); bool survived = true;
 
       for (int month = 1; month <= totalMonths; month++) {
-        balance += balance * monthlyRate; balance -= currentWithdrawal; totalWithdrawn += currentWithdrawal; monthsLasted++;
+        balance += balance * monthlyRate;
+        balance -= currentWithdrawal; totalWithdrawn += currentWithdrawal; monthsLasted++;
         if (balance <= 0) { balance = 0; survived = false; break; }
         if (month % 12 == 0) currentWithdrawal += currentWithdrawal * (inflation / 100);
       }
@@ -922,7 +999,7 @@ class _SwpCalculatorState extends State<SwpCalculator> with AutomaticKeepAliveCl
           decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.1))),
           child: TextField(
             controller: controller, keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: isCurrency ? [IndianNumberFormatter()] : [],
+            inputFormatters: isCurrency ? [LengthLimitingTextInputFormatter(12), IndianNumberFormatter()] : [LengthLimitingTextInputFormatter(6)],
             style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             onChanged: (val) => _calculate(),
             decoration: InputDecoration(prefixText: prefix.isNotEmpty ? '$prefix ' : null, prefixStyle: const TextStyle(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.bold), suffixText: suffix.isNotEmpty ? ' $suffix' : null, suffixStyle: const TextStyle(color: Colors.white54, fontSize: 14), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16)),
@@ -987,7 +1064,14 @@ class _SwpCalculatorState extends State<SwpCalculator> with AutomaticKeepAliveCl
   }
 
   Widget _buildResultRow(String label, String value, Color valueColor, {bool isTotal = false}) {
-    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(color: Colors.white70, fontSize: isTotal ? 16 : 14, fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500)), Text(value, style: TextStyle(color: valueColor, fontSize: isTotal ? 22 : 16, fontWeight: FontWeight.bold))]);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+      children: [
+        Expanded(child: Text(label, style: TextStyle(color: Colors.white70, fontSize: isTotal ? 16 : 14, fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500))), 
+        const SizedBox(width: 8),
+        Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight, child: Text(value, style: TextStyle(color: valueColor, fontSize: isTotal ? 22 : 16, fontWeight: FontWeight.bold))))
+      ]
+    );
   }
 }
 
@@ -1010,7 +1094,8 @@ class _FireCalculatorState extends State<FireCalculator> with AutomaticKeepAlive
   final TextEditingController _monthlyExpController = TextEditingController(text: '50,000');
   final TextEditingController _inflationController = TextEditingController(text: '9');
 
-  double _corpusAtRetirement = 0; double _expensesAtRetirement = 0; int _survivedMonths = 0; bool _fireAchieved = false;
+  double _corpusAtRetirement = 0; double _expensesAtRetirement = 0;
+  int _survivedMonths = 0; bool _fireAchieved = false;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
   @override
@@ -1038,13 +1123,17 @@ class _FireCalculatorState extends State<FireCalculator> with AutomaticKeepAlive
       double preRate = (preRetireReturn / 100) / 12; double postRate = (postRetireReturn / 100) / 12;
 
       for (int m = 1; m <= preRetireMonths; m++) {
-        balance += currentMonthlyInv; balance += balance * preRate;
-        if (m % 12 == 0) { currentMonthlyInv += currentMonthlyInv * (stepUp / 100); currentExpenses += currentExpenses * (inflation / 100); }
+        balance += currentMonthlyInv;
+        balance += balance * preRate;
+        if (m % 12 == 0) { currentMonthlyInv += currentMonthlyInv * (stepUp / 100);
+        currentExpenses += currentExpenses * (inflation / 100); }
       }
-      double corpusAtRetirement = balance; double expensesAtRetirement = currentExpenses;
+      double corpusAtRetirement = balance;
+      double expensesAtRetirement = currentExpenses;
       int survivedMonths = 0;
       for (int m = 1; m <= postRetireMonths; m++) {
-        balance += balance * postRate; balance -= currentExpenses; survivedMonths++;
+        balance += balance * postRate;
+        balance -= currentExpenses; survivedMonths++;
         if (balance <= 0) { balance = 0; break; }
         if (m % 12 == 0) currentExpenses += currentExpenses * (inflation / 100);
       }
@@ -1064,7 +1153,7 @@ class _FireCalculatorState extends State<FireCalculator> with AutomaticKeepAlive
           decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white.withOpacity(0.1))),
           child: TextField(
             controller: controller, keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: isCurrency ? [IndianNumberFormatter()] : [],
+            inputFormatters: isCurrency ? [LengthLimitingTextInputFormatter(12), IndianNumberFormatter()] : [LengthLimitingTextInputFormatter(6)],
             style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
             onChanged: (val) => _calculate(),
             decoration: InputDecoration(
@@ -1148,7 +1237,8 @@ class _FireCalculatorState extends State<FireCalculator> with AutomaticKeepAlive
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Expanded(child: Text(label, style: TextStyle(color: Colors.white70, fontSize: isTotal ? 14 : 12, fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500))),
-        Text(value, style: TextStyle(color: valueColor, fontSize: isTotal ? 18 : 14, fontWeight: FontWeight.bold)),
+        const SizedBox(width: 8),
+        Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight, child: Text(value, style: TextStyle(color: valueColor, fontSize: isTotal ? 18 : 14, fontWeight: FontWeight.bold))))
       ],
     );
   }

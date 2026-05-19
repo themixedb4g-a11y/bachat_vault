@@ -51,6 +51,11 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
   double _minY = 90;
   double _maxY = 110;
 
+  // Shutter Menu Dynamic Data
+  bool _isDetailsExpanded = false;
+  String? _latestNavVal;
+  String? _latestNavDateVal;
+
   @override
   void initState() {
     super.initState();
@@ -70,7 +75,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       final String indexTicker = isShariah ? 'KMI30' : 'KSE100';
       
       final bool isBenchmark = ['KSE100', 'KMI30', 'GOLD_24K', 'CPI_PK', 'USDPKR'].contains(ticker);
-
       DateTime startDate = DateTime.now();
       switch (_chartPeriod) {
         case '1M': startDate = DateTime.now().subtract(const Duration(days: 30)); break;
@@ -82,34 +86,43 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         case 'MAX': startDate = DateTime(2000, 1, 1); break;
       }
       final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
-
       final fundFuture = isBenchmark 
           ? supabase.from('benchmarks').select('validity_date, value').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true)
           : supabase.from('daily_nav').select('validity_date, nav').eq('ticker', ticker).gte('validity_date', startDateStr).order('validity_date', ascending: true);
-          
       final payoutFuture = isBenchmark 
           ? Future.value([]) 
           : supabase.from('payout_history').select('payout_date, payout_amount, ex_nav').eq('ticker', ticker).gte('payout_date', startDateStr);
-      
       final indexFuture = _showKse100 ? supabase.from('benchmarks').select('validity_date, value').eq('ticker', indexTicker).gte('validity_date', startDateStr).order('validity_date', ascending: true) : Future.value([]);
       final goldFuture = _showGold ? supabase.from('benchmarks').select('validity_date, value').eq('ticker', 'GOLD_24K').gte('validity_date', startDateStr).order('validity_date', ascending: true) : Future.value([]);
 
       final responses = await Future.wait([fundFuture, payoutFuture, indexFuture, goldFuture]);
-      
       List<dynamic> fundData = List.from(responses[0] as List<dynamic>);
       List<dynamic> payoutData = List.from(responses[1] as List<dynamic>);
       List<dynamic> indexData = List.from(responses[2] as List<dynamic>);
       List<dynamic> goldData = List.from(responses[3] as List<dynamic>);
 
+      // Extract Latest NAV dynamically for Shutter Menu
+      if (mounted && fundData.isNotEmpty) {
+        final lastPoint = fundData.last;
+        double? n = double.tryParse(lastPoint[isBenchmark ? 'value' : 'nav'].toString());
+        if (n != null) {
+          String s = n.toStringAsFixed(4);
+          if (s.contains('.')) {
+            s = s.replaceAll(RegExp(r'0*$'), '').replaceAll(RegExp(r'\.$'), '');
+          }
+          _latestNavVal = s;
+        }
+        final d = DateTime.tryParse(lastPoint['validity_date'].toString());
+        if (d != null) _latestNavDateVal = DateFormat('dd MMM yyyy').format(d);
+      }
+
       List<DateTime> startDates = [];
-      
       if (fundData.isNotEmpty) startDates.add(DateTime.parse(fundData.first['validity_date'].toString()));
       if (_showKse100 && indexData.isNotEmpty) startDates.add(DateTime.parse(indexData.first['validity_date'].toString()));
       if (_showGold && goldData.isNotEmpty) startDates.add(DateTime.parse(goldData.first['validity_date'].toString()));
 
       if (startDates.isNotEmpty) {
         DateTime commonStartDate = startDates.reduce((a, b) => a.isAfter(b) ? a : b);
-        
         fundData.removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
         indexData.removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
         goldData.removeWhere((row) => DateTime.parse(row['validity_date'].toString()).isBefore(commonStartDate));
@@ -117,14 +130,13 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       }
 
       List<FlSpot> fundSpots = [];
-      double startNav = 1.0; 
-      
+      double startNav = 1.0;
       for (var row in fundData) {
         double val = double.tryParse(row[isBenchmark ? 'value' : 'nav'].toString()) ?? 0.0;
         if (val > 0) { startNav = val; break; }
       }
 
-      double currentUnits = 100.0 / startNav; 
+      double currentUnits = 100.0 / startNav;
       double localMinY = 999999;
       double localMaxY = -999999;
 
@@ -133,8 +145,7 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         DateTime date = DateTime.parse(dateStr);
         
         double nav = double.tryParse(row[isBenchmark ? 'value' : 'nav'].toString()) ?? 0.0;
-        if (nav <= 0) continue; 
-
+        if (nav <= 0) continue;
         var dailyPayouts = payoutData.where((p) => p['payout_date'].toString().startsWith(dateStr));
         for (var p in dailyPayouts) {
           double pAmt = double.tryParse(p['payout_amount'].toString()) ?? 0.0;
@@ -167,7 +178,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
           double val = double.tryParse(row['value'].toString()) ?? 0.0;
           if (val <= 0) continue;
           double base100Value = (val / startVal) * 100.0;
-          
           if (base100Value < localMinY) localMinY = base100Value;
           if (base100Value > localMaxY) localMaxY = base100Value;
           spots.add(FlSpot(date.millisecondsSinceEpoch.toDouble(), base100Value));
@@ -201,21 +211,18 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
 
       final dateResponse = await supabase.from('fund_holdings')
           .select('fmr_date').eq('fund_ticker', ticker).order('fmr_date', ascending: false).limit(1);
-          
       if (dateResponse.isEmpty) {
         if (mounted) setState(() => _isLoadingHoldings = false);
         return;
       }
       
-      String latestDate = dateResponse.first['fmr_date'].toString(); 
-
+      String latestDate = dateResponse.first['fmr_date'].toString();
       final prevDateResponse = await supabase.from('fund_holdings')
           .select('fmr_date')
           .eq('fund_ticker', ticker)
           .neq('fmr_date', latestDate) 
           .order('fmr_date', ascending: false)
           .limit(1);
-      
       String? previousDate;
       if (prevDateResponse.isNotEmpty) {
         previousDate = prevDateResponse.first['fmr_date'].toString();
@@ -231,7 +238,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       final results = await Future.wait(futures);
       final holdingsResponse = results[0] as List<dynamic>;
       final prevHoldingsResponse = results.length > 1 ? results[1] as List<dynamic> : [];
-
       if (holdingsResponse.isEmpty) {
         if (mounted) setState(() => _isLoadingHoldings = false);
         return;
@@ -243,15 +249,12 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       }
 
       final List<String> stockTickers = holdingsResponse.map((h) => h['stock_ticker'].toString().trim()).toList();
-      
       final stocksResponse = await supabase.from('master_stocks')
           .select('ticker, company_name')
           .inFilter('ticker', stockTickers);
-
       List<Map<String, dynamic>> realCompanies = [];
       Map<String, dynamic>? otherHoldings;
       Map<String, dynamic>? cashHoldings;
-
       for (var holding in holdingsResponse) {
         String sTicker = holding['stock_ticker'].toString().trim();
         double percent = double.tryParse(holding['holding_percentage'].toString()) ?? 0.0;
@@ -266,7 +269,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
           (s) => s['ticker'].toString().trim() == sTicker, 
           orElse: () => {'company_name': sTicker}
         );
-        
         String name = stockMeta['company_name'].toString();
         
         if (sTicker == 'CASH') {
@@ -283,7 +285,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
 
       if (otherHoldings != null && (otherHoldings['percentage'] as double) > 0) finalHoldings.add(otherHoldings);
       if (cashHoldings != null && (cashHoldings['percentage'] as double) > 0) finalHoldings.add(cashHoldings);
-
       if (mounted) {
         setState(() {
           DateTime? parsedDate;
@@ -292,6 +293,7 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
           } catch (_) {}
           
           _holdingsDate = parsedDate != null ? DateFormat('MMMM yyyy').format(parsedDate) : latestDate;
+   
           _sectorAllocations = []; 
           _topHoldings = finalHoldings;
           _isLoadingHoldings = false;
@@ -325,7 +327,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     final isPositive = delta > 0;
     final color = isPositive ? Colors.greenAccent : Colors.redAccent.shade200;
     final icon = isPositive ? Icons.arrow_drop_up : Icons.arrow_drop_down;
-    
     return Container(
       margin: const EdgeInsets.only(top: 4),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -364,11 +365,42 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     return name.replaceAll('Exchange Traded Fund', 'ETF').replaceAll('Government', 'Govt.').trim();
   }
 
+  // --- THE NEW DYNAMIC SHUTTER MENU ROW BUILDER ---
+  Widget _buildDetailRow(String label, dynamic value, {String suffix = '', String prefix = ''}) {
+    if (value == null || value.toString().trim().isEmpty || value.toString().trim() == 'null' || value.toString().trim() == 'N/A') {
+      return const SizedBox.shrink();
+    }
+    
+    String displayValue = value.toString().trim();
+    if (value is num) {
+       displayValue = value.toStringAsFixed(2);
+       if (displayValue.endsWith('.00')) {
+         displayValue = displayValue.substring(0, displayValue.length - 3);
+       }
+    }
+    
+    if (suffix.isNotEmpty && displayValue.endsWith(suffix.trim())) {
+      suffix = ''; 
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(flex: 5, child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500))),
+          const SizedBox(width: 12),
+          Expanded(flex: 7, child: Text('$prefix$displayValue$suffix', textAlign: TextAlign.right, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700))),
+        ],
+      ),
+    );
+  }
+
   Widget _buildReturnRow(String label, String dbKey, int requiredDays, {int? years, bool isShariah = false}) {
     final rawValue = widget.fund[dbKey];
     final inception = widget.fund['inception_date']?.toString();
     final NumberFormat currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
-
     if (rawValue == null || !_isPeriodValid(inception, requiredDays)) {
       return Padding(padding: const EdgeInsets.symmetric(vertical: 12.0), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)), const Text('-', style: TextStyle(color: Colors.white38, fontSize: 16, fontWeight: FontWeight.bold))]));
     }
@@ -381,7 +413,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     String formattedValueDisplay = profitValue > 0 ? '+PKR $profitString' : profitValue < 0 ? '-PKR $profitString' : 'PKR 0';
     String percentageString = '${percent > 0 ? '+' : ''}${percent.toStringAsFixed(2)}%';
     Color statColor = percent > 0 ? Colors.greenAccent : percent < 0 ? Colors.redAccent.shade100 : Colors.white70;
-
     Widget mainRow = Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -389,7 +420,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(formattedValueDisplay, style: TextStyle(color: statColor, fontSize: 16, fontWeight: FontWeight.bold, fontFeatures: const [FontFeature.tabularFigures()])), const SizedBox(height: 2), Text(percentageString, style: TextStyle(color: statColor.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w600))]),
       ],
     );
-
     if (years != null && years >= 1) {
       double cagrPercent = (math.pow(returnFactor, 1.0 / years) - 1.0) * 100;
       String cagrStr = '${cagrPercent > 0 ? '+' : ''}${cagrPercent.toStringAsFixed(2)}%';
@@ -421,7 +451,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
           ],
         ),
       );
-
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 12.0),
         child: Column(
@@ -434,41 +463,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
       child: mainRow,
-    );
-  }
-
-  // 👇 THE FIX: Removed IntrinsicHeight complexity and added a fixed height to guarantee symmetry! 👇
-  Widget _buildInfoPill(String title, String value) {
-    return Expanded(
-      child: Container(
-        height: 68, // This magic number ensures ALL containers are perfectly symmetrical across all devices!
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.1))
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center, // Keeps the text perfectly centered vertically
-          children: [
-            AutoSizeText(
-              title,
-              style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600),
-              maxLines: 1,
-              minFontSize: 8,
-            ),
-            const SizedBox(height: 4),
-            AutoSizeText(
-              value,
-              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-              maxLines: 1,
-              minFontSize: 9,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -668,9 +662,9 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                           
                           Color sectionColor;
                           if (isOther(name)) {
-                            sectionColor = Colors.white24; 
+                            sectionColor = Colors.white24;
                           } else if (isCash(name)) {
-                            sectionColor = Colors.white10; 
+                            sectionColor = Colors.white10;
                           } else {
                             sectionColor = _sectorColors[idx % _sectorColors.length];
                           }
@@ -761,9 +755,7 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     final risk = widget.fund['risk_profile'] ?? 'N/A';
     final inceptionRaw = widget.fund['inception_date'];
     final incDateStr = inceptionRaw != null ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(inceptionRaw.toString()) ?? DateTime.now()) : 'N/A';
-    final terMtd = widget.fund['ter_mtd'] != null ? '${widget.fund['ter_mtd']}%' : 'N/A';
-    final terYtd = widget.fund['ter_ytd'] != null ? '${widget.fund['ter_ytd']}%' : 'N/A';
-
+    
     final String safeAmcName = amcName.toString().toLowerCase().replaceAll(' ', '_');
     final String safeTicker = widget.fund['ticker']?.toString().toLowerCase() ?? '';
     final bool isCrypto = category.toString().toLowerCase() == 'crypto';
@@ -813,10 +805,66 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                   ),
                   const SizedBox(height: 24),
                   
-                  // 👇 THE FIX: Reverted to standard Rows because our new 68px containers handle the layout safely! 👇
-                  Row(children: [_buildInfoPill('Category', category.toString()), const SizedBox(width: 12), _buildInfoPill('Risk Profile', risk.toString())]), const SizedBox(height: 12),
-                  Row(children: [_buildInfoPill('Inception Date', incDateStr), const SizedBox(width: 12), _buildInfoPill('TER (MTD)', terMtd), const SizedBox(width: 12), _buildInfoPill('TER (YTD)', terYtd)]), 
-                  
+                  // --- THE DYNAMIC SHUTTER MENU ---
+                  GestureDetector(
+                    onTap: () => setState(() => _isDetailsExpanded = !_isDetailsExpanded),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.info_outline, color: Colors.tealAccent, size: 20),
+                                  SizedBox(width: 8),
+                                  Text('Fund Details & Metrics', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                              Icon(_isDetailsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.tealAccent),
+                            ],
+                          ),
+                          
+                          AnimatedCrossFade(
+                            firstChild: const SizedBox(width: double.infinity, height: 0),
+                            secondChild: Padding(
+                              padding: const EdgeInsets.only(top: 20.0),
+                              child: Column(
+                                children: [
+                                  _buildDetailRow('Category', category),
+                                  _buildDetailRow('Risk Profile', risk),
+                                  _buildDetailRow('Fund Manager', widget.fund['fund_manager']),
+                                  _buildDetailRow('Inception Date', incDateStr),
+                                  if (_latestNavVal != null) 
+                                    _buildDetailRow('Latest NAV', 'PKR $_latestNavVal', suffix: _latestNavDateVal != null ? ' (As of $_latestNavDateVal)' : ''),
+                                  if (widget.fund['aum'] != null) 
+                                    _buildDetailRow('AUM', '${NumberFormat('#,##0.00').format(widget.fund['aum'])} Million'),
+                                  _buildDetailRow('Minimum Investment', widget.fund['min_investment']),
+                                  _buildDetailRow('Front-End Load (FEL)', widget.fund['fel']),
+                                  _buildDetailRow('Back-End Load (BEL)', widget.fund['bel']),
+                                  _buildDetailRow('TER (MTD)', widget.fund['ter_mtd'], suffix: '%'),
+                                  _buildDetailRow('TER (YTD)', widget.fund['ter_ytd'], suffix: '%'),
+                                  _buildDetailRow('Standard Deviation', widget.fund['standard_deviation'], suffix: '%'),
+                                  _buildDetailRow('Sharpe Ratio', widget.fund['sharpe_ratio']),
+                                  _buildDetailRow('Beta', widget.fund['beta']),
+                                  _buildDetailRow('Information Ratio', widget.fund['info_ratio']),
+                                  _buildDetailRow('Portfolio Turnover', widget.fund['portfolio_turnover']),
+                                ],
+                              ),
+                            ),
+                            crossFadeState: _isDetailsExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                            duration: const Duration(milliseconds: 300),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 32),
                   
                   if (!_isChartExpanded)

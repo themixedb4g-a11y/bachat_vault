@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart'; 
 
 import 'screens/main_layout.dart'; 
 import 'package:bachat_vault/screens/splash_screen.dart';
@@ -18,13 +19,12 @@ bool isUpdateRequired(String currentVersion, String minVersion) {
   for (int i = 0; i < 3; i++) {
     int c = currentParts.length > i ? currentParts[i] : 0;
     int m = minParts.length > i ? minParts[i] : 0;
-    if (c < m) return true; 
+    if (c < m) return true;
     if (c > m) return false; 
   }
-  return false; 
+  return false;
 }
 
-// --- FIX FOR DESKTOP MOUSE SWIPING ---
 class AppScrollBehavior extends MaterialScrollBehavior {
   @override
   Set<PointerDeviceKind> get dragDevices => {
@@ -39,7 +39,14 @@ Future<void> main() async {
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   
   await dotenv.load(fileName: ".env");
-  
+
+  final prefs = await SharedPreferences.getInstance();
+  if (!prefs.containsKey('first_launch_date')) {
+    final String today = DateTime.now().toIso8601String().split('T')[0]; 
+    await prefs.setString('first_launch_date', today);
+    debugPrint("Early User Status Locked: $today");
+  }
+
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL'] ?? '',
     anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
@@ -62,6 +69,7 @@ Future<void> main() async {
     playStoreUrl = response['play_store_url'];
 
     needsUpdate = isUpdateRequired(currentVersion, minVersion);
+
   } catch (e) {
     debugPrint("Version check failed or offline: $e");
   }
@@ -94,14 +102,28 @@ class MyApp extends StatelessWidget {
           secondary: Colors.tealAccent,
         ),
       ),
-      // --- GLOBAL WEB RESPONSIVE WRAPPER ---
+      // --- THE RED SCREEN CRASH FIX ---
       builder: (context, child) {
-        return Container(
-          color: const Color(0xFF0F172A), 
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: child!, 
+        final mediaQueryData = MediaQuery.of(context);
+        
+        // We manually calculate the scale to avoid the Flutter framework bug
+        double baseScale = mediaQueryData.textScaler.scale(14) / 14.0;
+        double safeScale = baseScale;
+        if (baseScale < 0.9) safeScale = 0.9;
+        if (baseScale > 1.1) safeScale = 1.1;
+
+        return MediaQuery(
+          data: mediaQueryData.copyWith(
+            // Use a pure linear scaler so DatePicker doesn't crash
+            textScaler: TextScaler.linear(safeScale),
+          ),
+          child: Container(
+            color: const Color(0xFF0F172A), 
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: child!, 
+              ),
             ),
           ),
         );

@@ -157,6 +157,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       'Pak-Qatar Asset Management Company Limited': 'Pak Qatar Asset Management',
       'EFU Life Insurance Limited': 'EFU Life Insurance',
       'UBL Fund Managers Limited': 'UBL Funds',
+      'BMA Investment Advisors Limited': 'BMA Investment Advisors',
     };
 
     String _cleanFundName(String name) {
@@ -174,14 +175,15 @@ class _DashboardScreenState extends State<DashboardScreen>
         .replaceAll('JS Islamic Sarmaya Mehfooz Fund (JS Islamic Sarmaya Mehfooz Plan 1)', 'JS Islamic Sarmaya Mehfooz Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan I)', 'Faysal Islamic Sovereign Plan I')
         .replaceAll('Faysal Islamic Sovereign Fund (Faysal Islamic Sovereign Plan II)', 'Faysal Islamic Sovereign Plan II')
-        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Nuumah Women Savers Plan)", "Faysal Nu'umah Women Savers Plan")
+        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Nu�umah Women Savers Plan)", "Faysal Nu'umah Women Savers Plan")
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan I)', 'Faysal Priority Ascend Plan I')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan II)', 'Faysal Priority Ascend Plan II')
         .replaceAll('Faysal Islamic Financial Planning Fund II (Faysal Priority Ascend Plan III)', 'Faysal Priority Ascend Plan III')
-        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Barakah Women Savers Plan)", "Faysal Barak'ah Women Savers Plan")
+        .replaceAll("Faysal Khushal Mustaqbil Fund (Faysal Barak�ah Women Savers Plan)", "Faysal Barak'ah Women Savers Plan")
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
+        .replaceAll('Faysal Islamic Asset Allocation Fund IV (Faysal Shariah Flex Plan IV)', 'Faysal Shariah Flex Plan IV')
         .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan I)', 'Faysal Islamic Financial Growth Plan I')
         .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan II)', 'Faysal Islamic Financial Growth Plan II')
         .replaceAll('Atlas Islamic Fund of Funds (Atlas Aggressive Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Aggressive)')
@@ -228,9 +230,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final masterResponse = await supabase.from('master_funds').select();
       final statsResponse = await supabase
           .from('performance_stats')
-          .select(
-            'ticker, return_1d, return_mtd, return_30d, return_fytd, return_1y, return_3y, return_5y, return_10y, return_15y, return_20y, ter_mtd, ter_ytd, last_validity_date',
-          );
+          .select('*');
 
       _benchmarkStats['KSE100'] = statsResponse.firstWhere(
         (s) => s['ticker'] == 'KSE100',
@@ -264,6 +264,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
         combined.add({
           ...mf,
+          ...stats,
           'amc_name': amcMap[rawAmc] ?? rawAmc,
           'short_category': categoryMap[rawCat] ?? rawCat,
           'short_amc_name': amcMap[rawAmc] ?? rawAmc,
@@ -307,9 +308,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   String _getGreetingEmoji() {
     final hour = DateTime.now().hour;
-    if (hour < 12) return '☀️';
-    if (hour < 17) return '🌤️';
-    if (hour < 20) return '🌙';
+    if (hour >= 5 && hour < 12) return '☀️';
+    if (hour >= 12 && hour < 17) return '🌤️';
+    if (hour >= 17 && hour < 22) return '🌙';
     return '🌙';
   }
 
@@ -691,7 +692,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                     ),
                     const Text(
-                      'Version 1.0.0',
+                      'Version 1.2.0',
                       style: TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                   ],
@@ -1173,7 +1174,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         ),
                                         SizedBox(width: 8),
                                         Text(
-                                          'Live Fund Estimator',
+                                          '✨ Live Fund Estimator',
                                           style: TextStyle(
                                             color: Colors.black87,
                                             fontSize: 16,

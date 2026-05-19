@@ -204,7 +204,7 @@ class _IndexInvestingScreenState extends State<IndexInvestingScreen> {
               // 🚨 NEW ICON: Pie Chart!
               Icon(Icons.pie_chart_rounded, color: Colors.amberAccent, size: 20),
               SizedBox(width: 8),
-              Text('DIY Index Portfolio', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+              Text('✨ Index Tracker', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
             ],
           ),
           centerTitle: true, backgroundColor: Colors.transparent, elevation: 0,

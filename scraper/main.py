@@ -11,6 +11,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 import yfinance as yf
 import functions_framework
+import fmr_scraper
+import ubl_scraper
 
 session = requests.Session()
 session.headers.update(
@@ -33,7 +35,9 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # --- 2. PRE-FETCH DATA & SETTINGS ---
 master_res = (
     supabase.table("master_funds")
-    .select("ticker, category, return_logic, fund_id_mufap, amc_website_name")
+    .select(
+        "ticker, fund_name, category, return_logic, fund_id_mufap, amc_website_name"
+    )
     .execute()
 )
 FUND_LOGIC_MAP = {
@@ -429,9 +433,9 @@ def sync_psx_etfs():
             print(f"   ✅ {len(safe_batch)} ETFs historically updated (daily_nav).")
 
 
-# --- TASK D: TARGETED MUFAP (UPDATED FOR 3-DAY ROLLING WINDOW) ---
+# --- TASK D: TARGETED MUFAP (UPDATED FOR 4-DAY ROLLING WINDOW) ---
 def sync_mufap_master():
-    print("🏛️ Syncing MUFAP (Targeted 3-Day Rolling)...")
+    print("🏛️ Syncing MUFAP (Targeted 4-Day Rolling)...")
     psx_exclusive_etfs = set()
     for ticker, category in FUND_CATEGORY_MAP.items():
         if (
@@ -440,7 +444,6 @@ def sync_mufap_master():
         ):
             psx_exclusive_etfs.add(ticker)
 
-    # THE FIX: We removed the `amc_direct_tickers` ban.
     # MUFAP now acts as a safety net for ALL funds.
     excluded_tickers = psx_exclusive_etfs
 
@@ -455,10 +458,10 @@ def sync_mufap_master():
         if row.get("fund_id_mufap") and row["ticker"] not in excluded_tickers
     }
 
-    # --- 3-DAY ROLLING URL LOGIC ---
+    # --- 4-DAY ROLLING URL LOGIC ---
     now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
     datetill = now_pk.strftime("%Y-%m-%d")
-    datefrom = (now_pk - timedelta(days=3)).strftime("%Y-%m-%d")
+    datefrom = (now_pk - timedelta(days=4)).strftime("%Y-%m-%d")
 
     mufap_url = f"https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=3&AMCId=null&fundId=null&datefrom={datefrom}&datetill={datetill}"
 
@@ -468,7 +471,7 @@ def sync_mufap_master():
             session.get(
                 mufap_url,
                 verify=False,
-                timeout=25,  # Increased timeout to handle the larger 3-day payload
+                timeout=25,  # Increased timeout to handle the larger 4-day payload
             ).text,
             "lxml",
         )
@@ -514,7 +517,7 @@ def sync_mufap_master():
                 supabase.table("daily_nav").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
                 ).execute()
-            print(f"   ✅ {len(batch)} MUFAP fund records updated (3-Day Rolling).")
+            print(f"   ✅ {len(batch)} MUFAP fund records updated (4-Day Rolling).")
     except Exception as e:
         print(f"   ❌ MUFAP Error: {e}")
 
@@ -855,7 +858,130 @@ def sync_hbl_amc():
         print(f"   ❌ HBL Error: {e}")
 
 
-# --- TASK F: MUFAP PAYOUTS ---
+# --- TASK E5: AL MEEZAN AMC (Priority Overwrite) ---
+def sync_al_meezan_amc():
+    print("🏦 Syncing Al Meezan AMC (Priority)...")
+
+    import cloudscraper
+
+    scraper = cloudscraper.create_scraper(
+        browser={"browser": "chrome", "platform": "windows", "desktop": True}
+    )
+
+    def clean_text(text):
+        if not text:
+            return ""
+        return (
+            text.lower().replace("-", " ").replace("*", "").replace("  ", " ").strip()
+        )
+
+    meezan_map = {
+        clean_text(r["amc_website_name"]): r["ticker"]
+        for r in master_res.data
+        if r.get("amc_website_name")
+    }
+
+    # 🚨 NEW: Funds that do not have a Repurchase Price and must use NAV (Column Index 5)
+    nav_override_keywords = [
+        "meezan cash fund",
+        "meezan islamic asaan cash fund",
+        "sehl account plan",
+        "super saver plan",
+        "equity sub fund",
+        "gold sub fund",
+        "debt sub fund",
+        "money market sub fund",
+        "gokp pension",
+        "migoppf",
+    ]
+
+    batch = []
+    try:
+        url = "https://www.almeezangroup.com/fund-prices/"
+        response = scraper.get(url, timeout=25)
+
+        if response.status_code != 200:
+            print(
+                f"   ❌ Al Meezan Error: Blocked or unavailable (Status {response.status_code})"
+            )
+            return
+
+        soup = BeautifulSoup(response.text, "lxml")
+        table = soup.find("table")
+        if not table:
+            return
+
+        for row in table.find_all("tr"):
+            cells = row.find_all(["td", "th"])
+            # Ensure we have at least 6 columns to safely grab index 5
+            if len(cells) >= 6:
+                raw_name = clean_text(cells[0].get_text(strip=True))
+
+                # Skip header rows
+                if (
+                    "funds category" in raw_name
+                    or "fund name" in raw_name
+                    or not raw_name
+                ):
+                    continue
+
+                ticker = meezan_map.get(raw_name)
+                if ticker:
+                    try:
+                        # Default to Repurchase (Index 3)
+                        nav_idx = 3
+
+                        # Override to NAV (Index 5) for specific funds
+                        if any(kw in raw_name for kw in nav_override_keywords):
+                            nav_idx = 5
+
+                        nav_str = cells[nav_idx].text.replace(",", "").strip()
+                        dt_str_raw = cells[2].text.strip()  # Date
+
+                        # Robust date parsing
+                        dt_str = None
+                        for fmt in ["%d %b %Y", "%d %B %Y", "%d-%b-%Y"]:
+                            try:
+                                dt_str = datetime.strptime(dt_str_raw, fmt).strftime(
+                                    "%Y-%m-%d"
+                                )
+                                break
+                            except ValueError:
+                                pass
+
+                        if not dt_str:
+                            continue
+
+                        if is_valid_date(dt_str, ticker) and nav_str:
+                            batch.append(
+                                {
+                                    "ticker": ticker,
+                                    "nav": float(nav_str),
+                                    "validity_date": dt_str,
+                                    "source": "AMC_Website",
+                                }
+                            )
+                    except Exception as parse_err:
+                        continue
+
+        if batch:
+            unique_batch = {
+                (item["ticker"], item["validity_date"]): item for item in batch
+            }
+            safe_batch = filter_protected_entries(
+                list(unique_batch.values()), "daily_nav"
+            )
+            if safe_batch:
+                supabase.table("daily_nav").upsert(
+                    safe_batch, on_conflict="ticker,validity_date"
+                ).execute()
+                print(f"   ✅ {len(safe_batch)} Al Meezan funds updated (Priority).")
+
+    except Exception as e:
+        print(f"   ❌ Al Meezan Error: {e}")
+
+
+# --- TASK F: MUFAP PAYOUTS (UPDATED FOR 4-DAY ROLLING) ---
 def sync_mufap_payouts():
     print("💸 Syncing MUFAP Payouts...")
     target_ids = {
@@ -869,13 +995,20 @@ def sync_mufap_payouts():
         if row.get("fund_id_mufap")
     }
 
+    # --- 4-DAY ROLLING URL LOGIC FOR PAYOUTS ---
+    now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
+    datetill = now_pk.strftime("%Y-%m-%d")
+    datefrom = (now_pk - timedelta(days=4)).strftime("%Y-%m-%d")
+
+    payouts_url = f"https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=4&AMCId=null&fundId=null&datefrom={datefrom}&datetill={datetill}"
+
     batch = []
     try:
         soup = BeautifulSoup(
             session.get(
-                "https://www.mufap.com.pk/Industry/IndustryStatDaily?tab=4",
+                payouts_url,
                 verify=False,
-                timeout=15,
+                timeout=25,
             ).text,
             "lxml",
         )
@@ -1049,6 +1182,71 @@ def sync_crypto_rates():
         print(f"   ❌ Crypto Error: {e}")
 
 
+# --- TASK I: MUFAP AUM (Monthly) ---
+def sync_mufap_aum():
+    print("💰 Syncing MUFAP AUM...")
+    from thefuzz import process
+
+    try:
+        # AUM is reported for the previous month. This safely calculates YYYY-MM for last month.
+        now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
+        first_day_this_month = now_pk.replace(day=1)
+        last_month = first_day_this_month - timedelta(days=1)
+        target_month = last_month.strftime("%Y-%m")
+
+        url = f"https://www.mufap.com.pk/Industry/IndustryStatMonthly?tab=1&datefrom={target_month}"
+        soup = BeautifulSoup(session.get(url, verify=False, timeout=20).text, "lxml")
+
+        # Build a dictionary for Fuzzy Matching
+        # (Prioritizes fund_name, falls back to amc_website_name)
+        db_funds = {}
+        for r in master_res.data:
+            name = r.get("fund_name") or r.get("amc_website_name") or r["ticker"]
+            db_funds[name] = r["ticker"]
+
+        db_fund_names = list(db_funds.keys())
+        batch = []
+
+        for row in soup.find_all("tr"):
+            cells = row.find_all("td")
+            if len(cells) >= 6:
+                raw_fund_name = cells[2].get_text(strip=True)
+                raw_aum = cells[5].get_text(strip=True).replace(",", "")
+
+                # Skip headers and empty rows
+                if (
+                    not raw_fund_name
+                    or raw_fund_name.lower() == "fund name"
+                    or not raw_aum
+                    or raw_aum == "-"
+                ):
+                    continue
+
+                try:
+                    aum_val = float(raw_aum)
+
+                    # Fuzzy match the MUFAP name to our database name
+                    best_match, score = process.extractOne(raw_fund_name, db_fund_names)
+                    if score >= 85:
+                        ticker = db_funds[best_match]
+                        batch.append({"ticker": ticker, "aum": aum_val})
+                except Exception as e:
+                    continue
+
+        if batch:
+            # Deduplicate just in case MUFAP lists a fund twice
+            unique_batch = {item["ticker"]: item for item in batch}
+            final_batch = list(unique_batch.values())
+
+            supabase.table("performance_stats").upsert(
+                final_batch, on_conflict="ticker"
+            ).execute()
+            print(f"   ✅ {len(final_batch)} AUM stats synced for {target_month}.")
+
+    except Exception as e:
+        print(f"   ❌ MUFAP AUM Error: {e}")
+
+
 # ==========================================
 # Google Cloud Function Entry Point
 # ==========================================
@@ -1071,6 +1269,8 @@ def run_scraper(request):
         sync_abl_amc()
         sync_nbp_amc()
         sync_hbl_amc()
+        sync_al_meezan_amc()
+        sync_mufap_aum()
     elif target == "gold_ter":
         sync_gold_rates()
         sync_international_gold()
@@ -1092,9 +1292,38 @@ def run_scraper(request):
         sync_abl_amc()
         sync_nbp_amc()
         sync_hbl_amc()
+        sync_al_meezan_amc()
         sync_mufap_payouts()
         sync_mufap_ter()
+        sync_mufap_aum()
         sync_crypto_rates()
+
+    # --- ENTERPRISE FMR TRAP ---
+    try:
+        # Get the exact current day in Pakistan Time
+        pkt_timezone = pytz.timezone("Asia/Karachi")
+        current_day = datetime.now(pkt_timezone).day
+        target_fmr_days = [5, 8, 11, 14, 17]
+
+        if current_day in target_fmr_days:
+            print(
+                f"\n📅 FMR Date Detected ({current_day}th of the month)! Triggering deep-dive scrapers..."
+            )
+
+            print("▶️ Starting Al Meezan FMR...")
+            fmr_scraper.run_al_meezan_fmr()
+
+            print("▶️ Starting UBL FMR...")
+            ubl_scraper.run_ubl_fmr()
+
+            print("✅ All FMR deep-dives completed successfully!\n")
+        else:
+            print(
+                f"\n⏭️ Skipping FMR Scrapers (Today is the {current_day}th. Only runs on: {target_fmr_days}).\n"
+            )
+    except Exception as e:
+        print(f"\n❌ Error triggering FMR Scrapers: {e}\n")
+    # ---------------------------
 
     total_time = datetime.now() - start_time
     completion_msg = f"🎉 SYNC COMPLETE. Total Time: {total_time}"

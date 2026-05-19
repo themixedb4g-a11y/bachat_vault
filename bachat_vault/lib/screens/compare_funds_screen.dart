@@ -770,7 +770,7 @@ class _CompareFundsScreenState extends State<CompareFundsScreen> {
                     Center(
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.show_chart, color: Colors.tealAccent, size: 25),
-                        label: const Text('✨ Compare Performance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        label: const Text('Compare Performance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                           side: BorderSide(color: Colors.tealAccent.withOpacity(0.5)),

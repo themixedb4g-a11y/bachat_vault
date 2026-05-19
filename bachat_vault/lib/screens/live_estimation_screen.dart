@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LiveEstimationScreen extends StatefulWidget {
   const LiveEstimationScreen({super.key});
@@ -17,9 +18,9 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
 
   bool _isLoading = true;
   String? _errorMessage;
-
   Map<String, Map<String, dynamic>> _liveStocks = {};
   Map<String, Map<String, dynamic>> _indices = {};
+
   List<Map<String, dynamic>> _masterFunds = [];
   Map<String, List<Map<String, dynamic>>> _latestHoldingsByFund = {};
 
@@ -29,14 +30,19 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
   double _investmentAmount = 100000.0;
   final TextEditingController _investmentController = TextEditingController(text: '1,00,000');
   
+  // Search & Fav State Variables
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  List<String> _favoriteTickers = [];
+  bool _showFavoritesOnly = false;
+
   List<String> _amcs = ['All'];
-  List<String> _categories = ['All'];
   String _selectedAmc = 'All';
-  String _selectedCategory = 'All';
 
   // MARKET STATUS STATE
   String _marketStatusText = 'Checking...';
   Color _marketStatusColor = Colors.white54;
+  String _lastUpdatedTime = ''; 
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
 
@@ -71,7 +77,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
     'Mahaana Wealth Limited': 'Mahaana Wealth', 'MCB Investment Management Limited': 'MCB Funds',
     'National Investment Trust Limited': 'National Investment Trust', 'NBP Fund Management Limited': 'NBP Funds',
     'Pak Oman Asset Management Company Limited': 'Pak Oman Asset Management', 'Pak-Qatar Asset Management Company Limited': 'Pak Qatar Asset Management',
-    'EFU Life Insurance Limited': 'EFU Life Insurance', 'UBL Fund Managers Limited': 'UBL Funds',
+    'EFU Life Insurance Limited': 'EFU Life Insurance', 'UBL Fund Managers Limited': 'UBL Funds', 'BMA Investment Advisors Limited': 'BMA Investment Advisors',
   };
 
   String _cleanFundName(String name) {
@@ -98,6 +104,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan I)', 'Faysal Shariah Flex Plan I')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan II)', 'Faysal Shariah Flex Plan II')
         .replaceAll('Faysal Islamic Asset Allocation Fund III (Faysal Shariah Flex Plan III)', 'Faysal Shariah Flex Plan III')
+        .replaceAll('Faysal Islamic Asset Allocation Fund IV (Faysal Shariah Flex Plan IV)', 'Faysal Shariah Flex Plan IV')
         .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan I)', 'Faysal Islamic Financial Growth Plan I')
         .replaceAll('Faysal Islamic Financial Growth Fund (Faysal Islamic Financial Growth Plan II)', 'Faysal Islamic Financial Growth Plan II')
         .replaceAll('Atlas Islamic Fund of Funds (Atlas Aggressive Allocation Islamic Plan)', 'Atlas Islamic Fund of Funds (Aggressive)')
@@ -143,25 +150,54 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.trim();
+        _applyFilters();
+      });
+    });
+    _loadFavorites();
     _fetchData();
   }
 
   @override
   void dispose() {
     _investmentController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
+
+  // --- FAVORITES LOGIC ---
+  Future<void> _loadFavorites() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _favoriteTickers = prefs.getStringList('favorite_funds') ?? [];
+    });
+  }
+
+  Future<void> _toggleFavorite(String ticker) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      if (_favoriteTickers.contains(ticker)) {
+        _favoriteTickers.remove(ticker);
+      } else {
+        _favoriteTickers.add(ticker);
+      }
+      prefs.setStringList('favorite_funds', _favoriteTickers);
+      if (_showFavoritesOnly) _applyFilters();
+    });
+  }
+  // -----------------------------
 
   Future<void> _fetchData() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
-
     try {
       final results = await Future.wait([
         supabase.from('master_funds').select('ticker, fund_name, amc_name, category, is_shariah'),
-        supabase.from('live_stock_prices').select('ticker, current_price, change, change_percent'),
+        supabase.from('live_stock_prices').select('ticker, current_price, change, change_percent, last_updated'),
         supabase.from('fund_holdings').select('fund_ticker, stock_ticker, holding_percentage, fmr_date'),
         supabase.from('market_holidays').select('holiday_date'),
         supabase.from('system_settings').select('setting_key, setting_value'),
@@ -173,54 +209,23 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
       final holidaysData = results[3] as List<dynamic>;
       final settingsData = results[4] as List<dynamic>;
 
-      // Resolve Market Status Logic
       _resolveMarketStatus(holidaysData, settingsData);
 
       _liveStocks.clear();
       _indices.clear();
+
       for (var row in liveData) {
         String ticker = row['ticker'].toString().toUpperCase();
         if (ticker == 'KSE100' || ticker == 'KMI30') {
           _indices[ticker] = row as Map<String, dynamic>;
+          if (ticker == 'KSE100' && row['last_updated'] != null) {
+            DateTime dt = DateTime.parse(row['last_updated'].toString()).toLocal();
+            _lastUpdatedTime = DateFormat('dd MMM yyyy, hh:mm a').format(dt);
+          }
         } else {
           _liveStocks[ticker] = row as Map<String, dynamic>;
         }
       }
-
-      List<Map<String, dynamic>> cleanedMasterFunds = [];
-      Set<String> amcSet = {};
-      Set<String> catSet = {};
-      
-      for (var fund in fundsData) {
-        String rawCat = fund['category']?.toString().trim() ?? '';
-        String rawAmc = fund['amc_name']?.toString().trim() ?? '';
-        String rawName = fund['fund_name']?.toString() ?? 'Unknown';
-        
-        bool isShariah = (fund['is_shariah'] == 1 || fund['is_shariah'] == '1' || fund['is_shariah'] == true);
-
-        String cleanCat = categoryMap[rawCat] ?? rawCat;
-        String cleanAmc = amcMap[rawAmc] ?? rawAmc;
-        String cleanName = _cleanFundName(rawName);
-
-        // 🚨 NEW RESTRICTION: Only allow Equity-heavy categories (already cleanly shortened by categoryMap)
-        List<String> allowedCategories = ['Equity', 'Asset Allocation', 'Balanced', 'VPS-Equity'];
-        if (!allowedCategories.contains(cleanCat)) continue;
-
-        cleanedMasterFunds.add({
-          ...fund,
-          'category': cleanCat,
-          'amc_name': cleanAmc,
-          'fund_name': cleanName,
-          'is_shariah': isShariah, 
-        });
-
-        if (cleanAmc.isNotEmpty) amcSet.add(cleanAmc);
-        if (cleanCat.isNotEmpty) catSet.add(cleanCat);
-      }
-      
-      _masterFunds = cleanedMasterFunds;
-      _amcs = ['All', ...amcSet.toList()..sort()];
-      _categories = ['All', ...catSet.toList()..sort()];
 
       Map<String, DateTime> latestDatePerFund = {};
       for (var h in holdingsData) {
@@ -244,6 +249,42 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
         }
       }
 
+      List<Map<String, dynamic>> cleanedMasterFunds = [];
+      Set<String> amcSet = {};
+      
+      List<String> allowedCategories = ['Equity', 'Asset Allocation', 'Balanced'];
+
+      for (var fund in fundsData) {
+        String ticker = fund['ticker'].toString();
+        
+        // This ensures ONLY AMCs with fund holdings make it into the UI
+        if (!_latestHoldingsByFund.containsKey(ticker)) continue; 
+
+        String rawCat = fund['category']?.toString().trim() ?? '';
+        String rawAmc = fund['amc_name']?.toString().trim() ?? '';
+        String rawName = fund['fund_name']?.toString() ?? 'Unknown';
+        bool isShariah = (fund['is_shariah'] == 1 || fund['is_shariah'] == '1' || fund['is_shariah'] == true);
+
+        String cleanCat = categoryMap[rawCat] ?? rawCat;
+        String cleanAmc = amcMap[rawAmc] ?? rawAmc;
+        String cleanName = _cleanFundName(rawName);
+        
+        if (!allowedCategories.contains(cleanCat)) continue;
+
+        cleanedMasterFunds.add({
+          ...fund,
+          'category': cleanCat,
+          'amc_name': cleanAmc,
+          'fund_name': cleanName,
+          'is_shariah': isShariah, 
+        });
+
+        if (cleanAmc.isNotEmpty) amcSet.add(cleanAmc);
+      }
+      
+      _masterFunds = cleanedMasterFunds;
+      _amcs = ['All', ...amcSet.toList()..sort()];
+
       _calculateEstimations();
 
     } catch (e) {
@@ -256,9 +297,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
     }
   }
 
-  // --- MARKET STATUS ENGINE ---
   void _resolveMarketStatus(List<dynamic> holidaysData, List<dynamic> settingsData) {
-    // 1. Get settings
     String override = 'AUTO';
     bool isRamazan = false;
     for (var s in settingsData) {
@@ -266,18 +305,16 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
       if (s['setting_key'] == 'ramazan_timings') isRamazan = s['setting_value'].toString().toUpperCase() == 'TRUE';
     }
 
-    // 2. PKT Conversion & Time Math
     DateTime utcNow = DateTime.now().toUtc();
     DateTime pktNow = utcNow.add(const Duration(hours: 5));
     String todayStr = DateFormat('yyyy-MM-dd').format(pktNow);
-    double hourDecimal = pktNow.hour + (pktNow.minute / 60.0);
 
-    // 3. Calendar Check
+    double hourDecimal = pktNow.hour + (pktNow.minute / 60.0);
     bool isWeekend = pktNow.weekday == DateTime.saturday || pktNow.weekday == DateTime.sunday;
     bool isHoliday = holidaysData.any((h) => h['holiday_date'].toString() == todayStr);
 
     void setStatus(bool isOpen) {
-      _marketStatusText = isOpen ? 'Market: ON' : 'Market: OFF';
+      _marketStatusText = isOpen ? 'Open' : 'Close';
       _marketStatusColor = isOpen ? Colors.greenAccent : Colors.redAccent;
     }
 
@@ -294,16 +331,13 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
       return;
     }
 
-    // Time Check
     if (isRamazan) {
-      // Ramazan: 9:00 AM - 1:30 PM (Mon-Thu), 9:00 AM - 12:30 PM (Fri)
       if (pktNow.weekday == DateTime.friday) {
          setStatus(hourDecimal >= 9.0 && hourDecimal <= 12.5);
       } else {
          setStatus(hourDecimal >= 9.0 && hourDecimal <= 13.5);
       }
     } else {
-      // Standard: 9:30 AM - 3:30 PM (Mon-Thu), Friday split
       if (pktNow.weekday == DateTime.friday) {
         setStatus((hourDecimal >= 9.5 && hourDecimal <= 12.0) || (hourDecimal >= 14.5 && hourDecimal <= 16.5));
       } else {
@@ -367,8 +401,22 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
   void _applyFilters() {
     List<Map<String, dynamic>> temp = _estimatedFunds;
 
-    if (_selectedAmc != 'All') temp = temp.where((f) => f['amc_name'] == _selectedAmc).toList();
-    if (_selectedCategory != 'All') temp = temp.where((f) => f['category'] == _selectedCategory).toList();
+    // 1. Favorites Filter
+    if (_showFavoritesOnly) {
+      temp = temp.where((f) => _favoriteTickers.contains(f['ticker'])).toList();
+    }
+
+    // 2. Search OR Dropdown Logic
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      temp = temp.where((f) {
+        final name = f['fund_name']?.toString().toLowerCase() ?? '';
+        final amc = f['amc_name']?.toString().toLowerCase() ?? '';
+        return name.contains(query) || amc.contains(query);
+      }).toList();
+    } else {
+      if (_selectedAmc != 'All') temp = temp.where((f) => f['amc_name'] == _selectedAmc).toList();
+    }
 
     temp.sort((a, b) => (b['estimated_percent'] as double).compareTo(a['estimated_percent'] as double));
 
@@ -403,14 +451,14 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
 
   Widget _buildIndexCard(String title, Map<String, dynamic>? data) {
     if (data == null) return const SizedBox.shrink();
-
+    
     double current = double.tryParse(data['current_price'].toString()) ?? 0.0;
     double change = double.tryParse(data['change'].toString()) ?? 0.0;
     double changePct = double.tryParse(data['change_percent'].toString()) ?? 0.0;
     
     bool isPositive = change >= 0;
     Color color = isPositive ? Colors.greenAccent : Colors.redAccent.shade200;
-
+    
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(12),
@@ -426,7 +474,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
               children: [
                 Icon(isPositive ? Icons.arrow_upward : Icons.arrow_downward, color: color, size: 12),
                 const SizedBox(width: 4),
-                Text('${changePct.abs().toStringAsFixed(2)}%', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+                Text('${change.abs().toStringAsFixed(2)} (${changePct.abs().toStringAsFixed(2)}%)', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
               ],
             )
           ],
@@ -447,7 +495,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
             children: [
               Icon(Icons.bolt_rounded, color: Colors.tealAccent),
               SizedBox(width: 8),
-              Text('Live Fund Estimator', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+              Text('✨ Live Fund Estimator', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
             ],
           ),
           centerTitle: true, backgroundColor: Colors.transparent, elevation: 0, leading: const BackButton(color: Colors.white),
@@ -470,29 +518,19 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Center(child: Text('Your Investment Value', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600))),
-                                  Center(
-                                    child: IntrinsicWidth(
-                                      child: TextField(
-                                        controller: _investmentController, keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: [IndianNumberFormatter()], textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800, height: 1.2), decoration: const InputDecoration(prefixText: 'PKR ', prefixStyle: TextStyle(color: Colors.tealAccent, fontSize: 20, fontWeight: FontWeight.w700), border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
-                                        onChanged: (val) { setState(() { _investmentAmount = double.tryParse(val.replaceAll(',', '')) ?? 0.0; }); },
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 24),
-                                  Row(
-                                    children: [
-                                      Expanded(child: _buildDropdown('AMC', _selectedAmc, _amcs, (v) { setState(() => _selectedAmc = v!); _applyFilters(); })),
-                                      const SizedBox(width: 12),
-                                      Expanded(child: _buildDropdown('Category', _selectedCategory, _categories, (v) { setState(() => _selectedCategory = v!); _applyFilters(); })),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 24),
                                   
+                                  // --- 1. MARKET PULSE & STATUS ---
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      const Text('Live Market Pulse', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text('Market Pulse', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                          if (_lastUpdatedTime.isNotEmpty)
+                                            Text('Last Updated: $_lastUpdatedTime', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                                        ],
+                                      ),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                         decoration: BoxDecoration(color: _marketStatusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: _marketStatusColor.withOpacity(0.3))),
@@ -514,7 +552,72 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                       _buildIndexCard('KMI-30', _indices['KMI30']),
                                     ],
                                   ),
+                                  const SizedBox(height: 24),
+                                  
+                                  // --- 2. INVESTMENT VALUE ---
+                                  const Center(child: Text('Your Investment Value', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600))),
+                                  Center(
+                                    child: IntrinsicWidth(
+                                      child: TextField(
+                                        controller: _investmentController, keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: [IndianNumberFormatter()], textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800, height: 1.2), decoration: const InputDecoration(prefixText: 'PKR ', prefixStyle: TextStyle(color: Colors.tealAccent, fontSize: 20, fontWeight: FontWeight.w700), border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
+                                        onChanged: (val) { setState(() { _investmentAmount = double.tryParse(val.replaceAll(',', '')) ?? 0.0; _applyFilters(); }); },
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+
+                                  // --- 3. SEARCH BAR AND FAVORITES ---
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Container(
+                                          height: 48,
+                                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                                          child: TextField(
+                                            controller: _searchController,
+                                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                                            decoration: InputDecoration(
+                                              hintText: 'Search funds, AMCs...',
+                                              hintStyle: const TextStyle(color: Colors.white38),
+                                              prefixIcon: const Icon(Icons.search, color: Colors.tealAccent),
+                                              suffixIcon: _searchQuery.isNotEmpty 
+                                                  ? IconButton(icon: const Icon(Icons.clear, color: Colors.white54, size: 18), onPressed: () { _searchController.clear(); FocusScope.of(context).unfocus(); }) 
+                                                  : null,
+                                              border: InputBorder.none,
+                                              contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _showFavoritesOnly = !_showFavoritesOnly;
+                                            _applyFilters();
+                                          });
+                                        },
+                                        child: Container(
+                                          height: 48, padding: const EdgeInsets.symmetric(horizontal: 12),
+                                          decoration: BoxDecoration(
+                                            color: _showFavoritesOnly ? Colors.redAccent.withOpacity(0.2) : Colors.white.withOpacity(0.05),
+                                            border: Border.all(color: _showFavoritesOnly ? Colors.redAccent : Colors.white.withOpacity(0.1)),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Center(
+                                            child: Text('❤️ Favs', style: TextStyle(color: _showFavoritesOnly ? Colors.redAccent : Colors.white54, fontWeight: FontWeight.bold, fontSize: 12)),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // --- 4. AMC FILTER ---
+                                  _buildDropdown('Filter by AMC', _selectedAmc, _amcs, (v) { setState(() => _selectedAmc = v!); _applyFilters(); }),
                                   const SizedBox(height: 32),
+                                  
+                                  // --- 5. ESTIMATED RETURNS HEADER ---
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
@@ -535,6 +638,9 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                     delegate: SliverChildBuilderDelegate(
                                       (context, index) {
                                         final fund = _filteredEstimatedFunds[index];
+                                        final ticker = fund['ticker']?.toString() ?? '';
+                                        final isFav = _favoriteTickers.contains(ticker); 
+
                                         double estPercent = fund['estimated_percent'] as double;
                                         double estPkr = _investmentAmount * (estPercent / 100.0);
                                         
@@ -544,7 +650,7 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
 
                                         return Container(
                                           margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16),
-                                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.03), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.05))),
+                                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.03), borderRadius: BorderRadius.circular(16), border: Border.all(color: isFav ? Colors.redAccent.withOpacity(0.3) : Colors.white.withOpacity(0.05))),
                                           child: Row(
                                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                             children: [
@@ -570,6 +676,12 @@ class _LiveEstimationScreenState extends State<LiveEstimationScreen> {
                                                   ),
                                                 ],
                                               ),
+                                              // --- THE HEART ICON ---
+                                              const SizedBox(width: 12),
+                                              GestureDetector(
+                                                onTap: () => _toggleFavorite(ticker),
+                                                child: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.redAccent : Colors.white38, size: 20),
+                                              )
                                             ],
                                           ),
                                         );
