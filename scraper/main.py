@@ -1205,14 +1205,28 @@ def sync_mufap_aum():
         url = f"https://www.mufap.com.pk/Industry/IndustryStatMonthly?tab=1&datefrom={target_month}"
         soup = BeautifulSoup(session.get(url, verify=False, timeout=20).text, "lxml")
 
-        db_funds = {}
+        # Create three levels of matching dictionaries
+        db_exact_composite = {}
+        db_exact_name = {}
+        db_fuzzy = {}
+
         for r in master_res.data:
-            name = r.get("fund_name") or r.get("amc_website_name") or r["ticker"]
-            db_funds[name] = r["ticker"]
+            name = (r.get("fund_name") or r.get("amc_website_name") or r["ticker"]).strip()
+            cat = (r.get("category") or "").strip()
+            ticker = r["ticker"]
 
-        db_fund_names = list(db_funds.keys())
+            # 1. Composite Key (Name + Category) -> Perfect for VPS!
+            db_exact_composite[(name.lower(), cat.lower())] = ticker
+            
+            # 2. Name-only Key
+            db_exact_name[name.lower()] = ticker
+            
+            # 3. Fuzzy map
+            db_fuzzy[name] = ticker
+
+        db_fund_names = list(db_fuzzy.keys())
         batch = []
-
+        
         rows = soup.find_all("tr")
         print(f"   🔍 Found {len(rows)} total rows in HTML table.")
 
@@ -1226,18 +1240,28 @@ def sync_mufap_aum():
                 if not raw_fund_name or raw_fund_name.lower() == "fund name" or not raw_aum or raw_aum == "-" or raw_aum.lower() == "not published":
                     continue
 
-                # 🚨 THE FIX FOR VPS: Combine Name + Category for Pension Funds
-                if "pension" in raw_fund_name.lower() or "vps" in raw_fund_name.lower() or "pension" in cells[0].get_text(strip=True).lower():
-                    search_target = f"{raw_fund_name} {raw_category}"
-                else:
-                    search_target = raw_fund_name
-
                 try:
                     aum_val = float(raw_aum)
-                    # Pass the combined search_target to the fuzzy matcher
-                    best_match, score = process.extractOne(search_target, db_fund_names)
-                    if score >= 85:
-                        ticker = db_funds[best_match]
+                    ticker = None
+                    
+                    name_key = raw_fund_name.lower()
+                    cat_key = raw_category.lower()
+                    
+                    # 1. Try Exact Match (Name + Category) FIRST
+                    if (name_key, cat_key) in db_exact_composite:
+                        ticker = db_exact_composite[(name_key, cat_key)]
+                    
+                    # 2. Try Exact Match (Name only)
+                    elif name_key in db_exact_name:
+                        ticker = db_exact_name[name_key]
+                    
+                    # 3. Fallback to Fuzzy Match
+                    else:
+                        best_match, score = process.extractOne(raw_fund_name, db_fund_names)
+                        if score >= 85:
+                            ticker = db_fuzzy[best_match]
+
+                    if ticker:
                         batch.append({"ticker": ticker, "aum": aum_val})
                 except Exception:
                     continue
