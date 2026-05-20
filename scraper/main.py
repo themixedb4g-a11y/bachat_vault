@@ -876,18 +876,15 @@ def sync_hbl_amc():
 def sync_al_meezan_amc():
     print("🏦 Syncing Al Meezan AMC (Priority)...")
 
-    import cloudscraper
-
-    scraper = cloudscraper.create_scraper(
-        browser={"browser": "chrome", "platform": "windows", "desktop": True}
-    )
+    # 🚨 THE FIX: Use real Chrome TLS fingerprinting to bypass Cloudflare
+    from curl_cffi import requests
+    from bs4 import BeautifulSoup
+    from datetime import datetime
 
     def clean_text(text):
         if not text:
             return ""
-        return (
-            text.lower().replace("-", " ").replace("*", "").replace("  ", " ").strip()
-        )
+        return text.lower().replace("-", " ").replace("*", "").replace("  ", " ").strip()
 
     meezan_map = {
         clean_text(r["amc_website_name"]): r["ticker"]
@@ -895,29 +892,21 @@ def sync_al_meezan_amc():
         if r.get("amc_website_name")
     }
 
-    # 🚨 NEW: Funds that do not have a Repurchase Price and must use NAV (Column Index 5)
     nav_override_keywords = [
-        "meezan cash fund",
-        "meezan islamic asaan cash fund",
-        "sehl account plan",
-        "super saver plan",
-        "equity sub fund",
-        "gold sub fund",
-        "debt sub fund",
-        "money market sub fund",
-        "gokp pension",
-        "migoppf",
+        "meezan cash fund", "meezan islamic asaan cash fund", "sehl account plan",
+        "super saver plan", "equity sub fund", "gold sub fund", "debt sub fund",
+        "money market sub fund", "gokp pension", "migoppf"
     ]
 
     batch = []
     try:
         url = "https://www.almeezangroup.com/fund-prices/"
-        response = scraper.get(url, timeout=25)
+
+        # This impersonates the exact network signature of Chrome
+        response = requests.get(url, impersonate="chrome110", timeout=25)
 
         if response.status_code != 200:
-            print(
-                f"   ❌ Al Meezan Error: Blocked or unavailable (Status {response.status_code})"
-            )
+            print(f"   ❌ Al Meezan Error: Blocked or unavailable (Status {response.status_code})")
             return
 
         soup = BeautifulSoup(response.text, "lxml")
@@ -927,38 +916,27 @@ def sync_al_meezan_amc():
 
         for row in table.find_all("tr"):
             cells = row.find_all(["td", "th"])
-            # Ensure we have at least 6 columns to safely grab index 5
+
             if len(cells) >= 6:
                 raw_name = clean_text(cells[0].get_text(strip=True))
 
-                # Skip header rows
-                if (
-                    "funds category" in raw_name
-                    or "fund name" in raw_name
-                    or not raw_name
-                ):
+                if ("funds category" in raw_name or "fund name" in raw_name or not raw_name):
                     continue
 
                 ticker = meezan_map.get(raw_name)
                 if ticker:
                     try:
-                        # Default to Repurchase (Index 3)
                         nav_idx = 3
-
-                        # Override to NAV (Index 5) for specific funds
                         if any(kw in raw_name for kw in nav_override_keywords):
                             nav_idx = 5
 
                         nav_str = cells[nav_idx].text.replace(",", "").strip()
-                        dt_str_raw = cells[2].text.strip()  # Date
+                        dt_str_raw = cells[2].text.strip()
 
-                        # Robust date parsing
                         dt_str = None
                         for fmt in ["%d %b %Y", "%d %B %Y", "%d-%b-%Y"]:
                             try:
-                                dt_str = datetime.strptime(dt_str_raw, fmt).strftime(
-                                    "%Y-%m-%d"
-                                )
+                                dt_str = datetime.strptime(dt_str_raw, fmt).strftime("%Y-%m-%d")
                                 break
                             except ValueError:
                                 pass
@@ -967,24 +945,18 @@ def sync_al_meezan_amc():
                             continue
 
                         if is_valid_date(dt_str, ticker) and nav_str:
-                            batch.append(
-                                {
-                                    "ticker": ticker,
-                                    "nav": float(nav_str),
-                                    "validity_date": dt_str,
-                                    "source": "AMC_Website",
-                                }
-                            )
-                    except Exception as parse_err:
+                            batch.append({
+                                "ticker": ticker,
+                                "nav": float(nav_str),
+                                "validity_date": dt_str,
+                                "source": "AMC_Website",
+                            })
+                    except Exception:
                         continue
 
         if batch:
-            unique_batch = {
-                (item["ticker"], item["validity_date"]): item for item in batch
-            }
-            safe_batch = filter_protected_entries(
-                list(unique_batch.values()), "daily_nav"
-            )
+            unique_batch = {(item["ticker"], item["validity_date"]): item for item in batch}
+            safe_batch = filter_protected_entries(list(unique_batch.values()), "daily_nav")
             if safe_batch:
                 supabase.table("daily_nav").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
@@ -1203,11 +1175,13 @@ def sync_mufap_aum():
     try:
         print("💰 Syncing MUFAP AUM...")
         from thefuzz import process
+        from bs4 import BeautifulSoup
+        from datetime import datetime, timedelta
+        import pytz
 
         now_pk = datetime.now(pytz.timezone("Asia/Karachi"))
-        first_day_this_month = now_pk.replace(day=1)
-        last_month = first_day_this_month - timedelta(days=1)
-        target_month = last_month.strftime("%Y-%m")
+        target_month = (now_pk.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+        print(f"   🔍 Target Month: {target_month}")
 
         url = f"https://www.mufap.com.pk/Industry/IndustryStatMonthly?tab=1&datefrom={target_month}"
         soup = BeautifulSoup(session.get(url, verify=False, timeout=20).text, "lxml")
@@ -1220,21 +1194,16 @@ def sync_mufap_aum():
         db_fund_names = list(db_funds.keys())
         batch = []
 
-        for row in soup.find_all("tr"):
-            cells = row.find_all("td")
+        rows = soup.find_all("tr")
+        print(f"   🔍 Found {len(rows)} total rows in HTML table.")
 
-            # 🚨 THE FIX: Table has 6 columns. Fund Name is Index 2, AUM is Index 5.
+        for row in rows:
+            cells = row.find_all("td")
             if len(cells) >= 6:
                 raw_fund_name = cells[2].get_text(strip=True)
                 raw_aum = cells[5].get_text(strip=True).replace(",", "")
 
-                if (
-                    not raw_fund_name
-                    or raw_fund_name.lower() == "fund name"
-                    or not raw_aum
-                    or raw_aum == "-"
-                    or raw_aum.lower() == "not published"
-                ):
+                if not raw_fund_name or raw_fund_name.lower() == "fund name" or not raw_aum or raw_aum == "-" or raw_aum.lower() == "not published":
                     continue
 
                 try:
@@ -1243,8 +1212,10 @@ def sync_mufap_aum():
                     if score >= 85:
                         ticker = db_funds[best_match]
                         batch.append({"ticker": ticker, "aum": aum_val})
-                except Exception as e:
+                except Exception:
                     continue
+
+        print(f"   🔍 Successfully matched {len(batch)} funds to database.")
 
         if batch:
             unique_batch = {item["ticker"]: item for item in batch}
@@ -1254,7 +1225,7 @@ def sync_mufap_aum():
             ).execute()
             print(f"   ✅ {len(final_batch)} AUM stats synced for {target_month}.")
         else:
-            print(f"   ⚠️ No AUM data matched for {target_month}. Check MUFAP website.")
+            print(f"   ⚠️ No AUM data matched. Check if MUFAP structure changed.")
 
     except Exception as e:
         print(f"   ❌ MUFAP AUM Error: {e}")
