@@ -5,8 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; 
-
 import 'package:bachat_vault/screens/index_investing_screen.dart';
+import 'package:bachat_vault/screens/risk_profiler_screen.dart';
 
 // ============================================================================
 // 1. THE NEW "TOOLS" MAIN MENU
@@ -131,7 +131,7 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
                   _buildToolCard(
                     context: context,
                     title: 'Financial Calculators',
-                    subtitle: 'Plan your SIP, SWP, and FIRE goals. Calculate your VPS Tax Credit',
+                    subtitle: 'Plan your SIP, SWP, and FIRE goals. Calculate VPS Tax Credit',
                     icon: Icons.calculate_rounded,
                     accentColor: Colors.tealAccent,
                     destinationScreen: const FinancialCalculatorsScreen(),
@@ -146,6 +146,17 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
                     icon: Icons.pie_chart_rounded,
                     accentColor: Colors.amberAccent, 
                     destinationScreen: const IndexInvestingScreen(),
+                  ),
+
+                  const SizedBox(height: 16),
+                  
+                  _buildToolCard(
+                    context: context,
+                    title: '🧠 Smart Risk Profiler',
+                    subtitle: 'Take a quick quiz to discover your investor profile and ideal asset allocation.',
+                    icon: Icons.psychology_rounded,
+                    accentColor: Colors.purpleAccent,
+                    destinationScreen: const RiskProfilerScreen(),
                   ),
                 ],
               ),

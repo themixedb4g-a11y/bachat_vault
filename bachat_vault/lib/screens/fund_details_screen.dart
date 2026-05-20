@@ -373,10 +373,8 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     
     String displayValue = value.toString().trim();
 
-    if (label == 'Minimum Investment') {
-      if (displayValue.contains('|')) {
-        displayValue = '${displayValue.split('|')[0].replaceAll('Initial', '').trim()} (Min)'; 
-      }
+    if (label == 'Minimum Investment' && displayValue.contains('|')) {
+      displayValue = '${displayValue.split('|')[0].replaceAll('Initial', '').trim()} (Min)'; 
     }
 
     if (value is num) {
@@ -390,7 +388,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       suffix = '';
     }
 
-    // 🚨 NEW LOGIC: If the text is very long, stack it instead of shrinking it!
     bool isLongText = displayValue.length > 25 || label == 'Category';
 
     if (isLongText) {
@@ -403,18 +400,13 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
             const SizedBox(height: 6),
             Align(
               alignment: Alignment.centerRight,
-              child: Text(
-                '$prefix$displayValue$suffix', 
-                textAlign: TextAlign.right, 
-                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)
-              ),
+              child: Text('$prefix$displayValue$suffix', textAlign: TextAlign.right, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
             ),
           ],
         ),
       );
     }
     
-    // Standard Row layout for short text
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: Row(
@@ -430,10 +422,7 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
               children: [
                 Text('$prefix$displayValue$suffix', textAlign: TextAlign.right, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
                 if (subText != null && subText.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2.0),
-                    child: Text(subText, textAlign: TextAlign.right, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w400)),
-                  ),
+                  Padding(padding: const EdgeInsets.only(top: 2.0), child: Text(subText, textAlign: TextAlign.right, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w400))),
               ],
             ),
           ),

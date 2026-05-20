@@ -16,3 +16,4 @@ ENV/
 # Local data or logs
 *.log
 .DS_Store
+.idea/
