@@ -720,69 +720,88 @@ def sync_abl_amc():
 # --- TASK E3: NBP FUNDS (Priority Overwrite) ---
 def sync_nbp_amc():
     print("🏦 Syncing NBP Funds (Priority)...")
+    from curl_cffi import requests
+    from bs4 import BeautifulSoup
+    from datetime import datetime
+    import re
+    from thefuzz import process
 
     def clean_text(text):
         if not text:
             return ""
-        return (
-            text.lower().replace("-", " ").replace("*", "").replace("  ", " ").strip()
-        )
+        return text.lower().replace("-", " ").replace("*", "").replace("  ", " ").strip()
 
     nbp_map = {
         clean_text(r["amc_website_name"]): r["ticker"]
         for r in master_res.data
         if r.get("amc_website_name")
     }
+    db_names = list(nbp_map.keys())
+
     batch = []
     try:
-        soup = BeautifulSoup(
-            session.get(
-                "https://www.nbpfunds.com/fund-prices/fund-nav-view/",
-                verify=False,
-                timeout=15,
-            ).text,
-            "lxml",
+        # 🚨 THE FIX: Use Chrome Impersonator to bypass firewalls
+        response = requests.get(
+            "https://www.nbpfunds.com/fund-prices/fund-nav-view/",
+            impersonate="chrome110",
+            timeout=15,
         )
-        table = soup.find("table")
-        if not table:
+        
+        if response.status_code != 200:
+            print(f"   ❌ NBP Error: Blocked (Status {response.status_code})")
             return
 
-        for row in table.find_all("tr"):
+        soup = BeautifulSoup(response.text, "lxml")
+        table = soup.find("table")
+        
+        if not table:
+            print("   ❌ NBP Error: Could not find HTML table on the page.")
+            return
+            
+        rows = table.find_all("tr")
+        print(f"   🔍 Found {len(rows)} rows in NBP table.")
+
+        for row in rows:
             cells = row.find_all("td")
             if len(cells) >= 4:
-                ticker = nbp_map.get(clean_text(cells[0].get_text(strip=True)))
+                raw_name = clean_text(cells[0].get_text(strip=True))
+                if not raw_name or "fund name" in raw_name:
+                    continue
+                    
+                # 🚨 THE FIX: Try exact match first, fallback to Fuzzy Match
+                ticker = nbp_map.get(raw_name)
+                if not ticker and db_names:
+                    best_match, score = process.extractOne(raw_name, db_names)
+                    if score >= 85:
+                        ticker = nbp_map[best_match]
+
                 if ticker:
                     try:
                         raw_date = re.sub(r"\s+", " ", cells[3].text.strip())
-                        dt_str = datetime.strptime(raw_date, "%b %d, %Y").strftime(
-                            "%Y-%m-%d"
-                        )
+                        dt_str = datetime.strptime(raw_date, "%b %d, %Y").strftime("%Y-%m-%d")
                         if is_valid_date(dt_str, ticker):
                             nav_text = cells[2].text.replace(",", "").strip()
                             if nav_text:
-                                batch.append(
-                                    {
-                                        "ticker": ticker,
-                                        "nav": float(nav_text),
-                                        "validity_date": dt_str,
-                                        "source": "AMC_Website",
-                                    }
-                                )
-                    except:
+                                batch.append({
+                                    "ticker": ticker,
+                                    "nav": float(nav_text),
+                                    "validity_date": dt_str,
+                                    "source": "AMC_Website",
+                                })
+                    except Exception:
                         continue
 
         if batch:
-            unique_batch = {
-                (item["ticker"], item["validity_date"]): item for item in batch
-            }
-            safe_batch = filter_protected_entries(
-                list(unique_batch.values()), "daily_nav"
-            )
+            unique_batch = {(item["ticker"], item["validity_date"]): item for item in batch}
+            safe_batch = filter_protected_entries(list(unique_batch.values()), "daily_nav")
             if safe_batch:
                 supabase.table("daily_nav").upsert(
                     safe_batch, on_conflict="ticker,validity_date"
                 ).execute()
                 print(f"   ✅ {len(safe_batch)} NBP funds updated (Priority).")
+        else:
+            print("   ⚠️ NBP Error: Scraper ran, but 0 funds were matched.")
+            
     except Exception as e:
         print(f"   ❌ NBP Error: {e}")
 
@@ -1201,14 +1220,22 @@ def sync_mufap_aum():
             cells = row.find_all("td")
             if len(cells) >= 6:
                 raw_fund_name = cells[2].get_text(strip=True)
+                raw_category = cells[3].get_text(strip=True)
                 raw_aum = cells[5].get_text(strip=True).replace(",", "")
 
                 if not raw_fund_name or raw_fund_name.lower() == "fund name" or not raw_aum or raw_aum == "-" or raw_aum.lower() == "not published":
                     continue
 
+                # 🚨 THE FIX FOR VPS: Combine Name + Category for Pension Funds
+                if "pension" in raw_fund_name.lower() or "vps" in raw_fund_name.lower() or "pension" in cells[0].get_text(strip=True).lower():
+                    search_target = f"{raw_fund_name} {raw_category}"
+                else:
+                    search_target = raw_fund_name
+
                 try:
                     aum_val = float(raw_aum)
-                    best_match, score = process.extractOne(raw_fund_name, db_fund_names)
+                    # Pass the combined search_target to the fuzzy matcher
+                    best_match, score = process.extractOne(search_target, db_fund_names)
                     if score >= 85:
                         ticker = db_funds[best_match]
                         batch.append({"ticker": ticker, "aum": aum_val})
