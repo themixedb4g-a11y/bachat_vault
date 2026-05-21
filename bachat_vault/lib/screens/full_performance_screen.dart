@@ -259,11 +259,11 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.star_rounded, color: Colors.amberAccent),
-                title: const Text('Top 30 Market Leaders (1D)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                title: const Text('Top 25 Market Leaders (1D)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 subtitle: const Text('Equity, Index & ETFs (No delayed funds)', style: TextStyle(color: Colors.white54, fontSize: 12)),
                 onTap: () {
                   Navigator.pop(context);
-                  _exportTop30Report();
+                  _exportTop25Report();
                 },
               ),
               const Divider(color: Colors.white12),
@@ -365,8 +365,8 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     );
   }
 
-  // --- 📸 NEW: TOP 30 EXPORT LOGIC ---
-  Future<void> _exportTop30Report() async {
+  // --- 📸 NEW: TOP 25 EXPORT LOGIC ---
+  Future<void> _exportTop25Report() async {
     showDialog(
       context: context, barrierDismissible: false,
       builder: (BuildContext context) {
@@ -379,14 +379,13 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
               children: [
                 CircularProgressIndicator(color: Colors.tealAccent),
                 SizedBox(width: 20),
-                Text("Generating Top 30 Report...", style: TextStyle(color: Colors.white)),
+                Text("Generating Top 25 Report...", style: TextStyle(color: Colors.white)), // Changed to 25
               ],
             ),
           ),
         );
       },
     );
-
     try {
       DateTime maxAbsoluteDate = DateTime(1970);
       for (var f in widget.allFunds) {
@@ -423,15 +422,19 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 
         return true;
       }).toList();
-
+      
       eligibleFunds.sort((a, b) => ((b['return_1d'] as num?)?.toDouble() ?? -999.0).compareTo((a['return_1d'] as num?)?.toDouble() ?? -999.0));
-      var top30 = eligibleFunds.take(30).toList();
-
-      await _captureAndSaveLight('Top 30 Market Leaders', top30, true);
+      
+      // Changed .take(30) to .take(25)
+      var top25 = eligibleFunds.take(25).toList();
+      
+      // Changed Title string passed to the screenshot generator
+      await _captureAndSaveLight('Top 25 Market Leaders', top25, true);
 
       if (mounted) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Top 30 Report saved to Gallery!'), backgroundColor: Colors.green, duration: Duration(seconds: 4)));
+        // Changed SnackBar success message
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Top 25 Report saved to Gallery!'), backgroundColor: Colors.green, duration: Duration(seconds: 4)));
       }
     } catch (e) {
       if (mounted) {
@@ -531,12 +534,12 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       }
     }
 
-    // Compress row height for Top 30 to save massive vertical space
-    double rowHeight = title == 'Top 30 Market Leaders' ? 75.0 : 100.0;
+    // Compress row height for Top 25 to save massive vertical space
+    double rowHeight = title == 'Top 25 Market Leaders' ? 75.0 : 100.0;
     double contentHeight = 120.0 + 120.0 + 40.0 + 20.0 + 40.0 + 20.0;
     contentHeight += funds.length * rowHeight; 
     
-    if (title == 'Top Equity Funds' || title == 'Top 30 Market Leaders') {
+    if (title == 'Top Equity Funds' || title == 'Top 25 Market Leaders') {
       contentHeight += 40.0 + 220.0; 
     }
 
@@ -561,7 +564,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(
-                        height: title == 'Top 30 Market Leaders' ? 140 : 120, // Expanded to fit 3 lines
+                        height: title == 'Top 25 Market Leaders' ? 140 : 120, // Expanded to fit 3 lines
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -573,7 +576,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                                 children: [
                                   Text(title, style: GoogleFonts.poppins(color: Colors.teal.shade800, fontSize: 48, fontWeight: FontWeight.bold), maxLines: 1),
                                   Text('Investment: PKR 1,00,000', style: GoogleFonts.poppins(color: Colors.black87, fontSize: 24), maxLines: 1),
-                                  if (title == 'Top 30 Market Leaders')
+                                  if (title == 'Top 25 Market Leaders')
                                     Text('As of ${DateFormat('dd MMM yyyy').format(maxAbsoluteDate)}', style: GoogleFonts.poppins(color: Colors.black54, fontSize: 20), maxLines: 1),
                                 ],
                               ),
@@ -586,7 +589,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                           ],
                         ),
                       ),
-                      SizedBox(height: title == 'Top 30 Market Leaders' ? 16 : 40), // Reduced gap for Top 30
+                      SizedBox(height: title == 'Top 25 Market Leaders' ? 16 : 40), // Reduced gap for Top 25
                       const Divider(color: Colors.black12, thickness: 2, height: 20),
                   
                   SizedBox(
@@ -661,7 +664,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (title != 'Top 30 Market Leaders')
+                                    if (title != 'Top 25 Market Leaders')
                                       Row(
                                         children: [
                                           Flexible(child: Text(amc.toUpperCase(), style: GoogleFonts.poppins(color: Colors.teal.shade800, fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
@@ -705,7 +708,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                     );
                   }),
                   
-                  if (title == 'Top Equity Funds' || title == 'Top 30 Market Leaders') ...[
+                  if (title == 'Top Equity Funds' || title == 'Top 25 Market Leaders') ...[
                     const SizedBox(height: 40),
                     SizedBox(
                       height: 220, 
