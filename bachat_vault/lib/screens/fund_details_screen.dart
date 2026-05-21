@@ -373,10 +373,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
     
     String displayValue = value.toString().trim();
 
-    if (label == 'Minimum Investment' && displayValue.contains('|')) {
-      displayValue = '${displayValue.split('|')[0].replaceAll('Initial', '').trim()} (Min)'; 
-    }
-
     if (value is num) {
        displayValue = value.toStringAsFixed(2);
        if (displayValue.endsWith('.00')) {
@@ -388,7 +384,7 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
       suffix = '';
     }
 
-    bool isLongText = displayValue.length > 25 || label == 'Category';
+    bool isLongText = displayValue.length > 25;
 
     if (isLongText) {
       return Padding(
@@ -820,9 +816,11 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(amcName.toString().toUpperCase(), style: const TextStyle(color: Colors.tealAccent, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.0)),
+                             Text(amcName.toString().toUpperCase(), style: const TextStyle(color: Colors.tealAccent, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.0)),
                             const SizedBox(height: 8),
                             Text('$fundName${isShariah ? " 🕌" : ""}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
+                            const SizedBox(height: 4),
+                            Text(category, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
@@ -871,7 +869,6 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                               padding: const EdgeInsets.only(top: 20.0),
                               child: Column(
                                 children: [
-                                  _buildDetailRow('Category', category),
                                   _buildDetailRow('Risk Profile', risk),
                                   _buildDetailRow('Fund Manager', widget.fund['fund_manager']),
                                   _buildDetailRow('Inception Date', incDateStr),
@@ -879,9 +876,20 @@ class _FundDetailsScreenState extends State<FundDetailsScreen> {
                                   _buildDetailRow('Latest NAV', 'PKR $_latestNavVal', subText: _latestNavDateVal != null ? 'As of $_latestNavDateVal' : null),
                                   if (widget.fund['aum'] != null) 
                                   _buildDetailRow('AUM', (widget.fund['aum'] as num).toDouble() >= 1000 ? 'PKR ${((widget.fund['aum'] as num).toDouble() / 1000).toStringAsFixed(2)} Billion' : 'PKR ${NumberFormat('#,##0.00').format(widget.fund['aum'])} Million'),
-                                  _buildDetailRow('Minimum Investment', widget.fund['min_investment']),
-                                  _buildDetailRow('Front-End Load (FEL)', widget.fund['fel']),
-                                  _buildDetailRow('Back-End Load (BEL)', widget.fund['bel']),
+                                  // Only show the header if at least one of the values exists
+                                  if (widget.fund['min_investment'] != null || widget.fund['sub_investment'] != null) ...[
+                                    const Padding(
+                                      padding: EdgeInsets.only(top: 12.0, bottom: 4.0),
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text('Minimum Investment', style: TextStyle(color: Colors.tealAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ),
+                                    _buildDetailRow('  • Initial', widget.fund['min_investment']),
+                                    _buildDetailRow('  • Subsequent', widget.fund['sub_investment']),
+                                  ],
+                                  _buildDetailRow('Front End Load (FEL)', widget.fund['fel']),
+                                  _buildDetailRow('Back End Load (BEL)', widget.fund['bel']),
                                   _buildDetailRow('TER (MTD)', widget.fund['ter_mtd'], suffix: '%'),
                                   _buildDetailRow('TER (YTD)', widget.fund['ter_ytd'], suffix: '%'),
                                   _buildDetailRow('Standard Deviation', widget.fund['standard_deviation'], suffix: '%'),

@@ -7,7 +7,6 @@ import 'package:bachat_vault/screens/fund_details_screen.dart';
 import 'package:bachat_vault/screens/compare_funds_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:screenshot/screenshot.dart';
 import 'package:gal/gal.dart';
 
@@ -28,6 +27,9 @@ class FullPerformanceScreen extends StatefulWidget {
 }
 
 class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
+  // 🚨 ADD YOUR EXCLUDED TICKERS HERE (e.g., 'TICKER1', 'TICKER2')
+  final List<String> _excludedScreenshotFunds = [];
+
   late double _investmentAmount;
   late TextEditingController _investmentController;
   late TextEditingController _searchController;
@@ -44,7 +46,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 
   List<String> _favoriteTickers = [];
   bool _showFavoritesOnly = false;
-
   DateTime? _customStartDate;
   DateTime? _customEndDate;
   bool _isCustomLoading = false;
@@ -70,7 +71,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
         _searchQuery = _searchController.text.trim();
       });
     });
-
     _setupFilters();
     _loadFavorites();
     _loadAdminStatus(); 
@@ -154,7 +154,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   void _setupFilters() {
     final Set<String> categorySet = {};
     final Set<String> amcSet = {};
-
     for (var mf in widget.allFunds) {
       final cat = mf['short_category'] ?? mf['category'];
       if (cat != null && cat.toString().isNotEmpty) categorySet.add(cat.toString().trim());
@@ -191,7 +190,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
   List<Map<String, dynamic>> _getFilteredAndSortedFunds() {
     final sortKey = _getSortKey();
     var filtered = widget.allFunds.toList();
-
     if (_showFavoritesOnly) {
       filtered = filtered.where((f) => _favoriteTickers.contains(f['ticker'])).toList();
     }
@@ -234,7 +232,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
         final dateStrB = b['last_validity_date']?.toString();
         final dateA = dateStrA != null ? (DateTime.tryParse(dateStrA) ?? DateTime(1970)) : DateTime(1970);
         final dateB = dateStrB != null ? (DateTime.tryParse(dateStrB) ?? DateTime(1970)) : DateTime(1970);
-        
         int dateComparison = dateB.compareTo(dateA);
         if (dateComparison != 0) return dateComparison;
       }
@@ -260,6 +257,16 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                 padding: EdgeInsets.all(16.0),
                 child: Text('Select Export Type', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               ),
+              ListTile(
+                leading: const Icon(Icons.star_rounded, color: Colors.amberAccent),
+                title: const Text('Top 30 Market Leaders (1D)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text('Equity, Index & ETFs (No delayed funds)', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _exportTop30Report();
+                },
+              ),
+              const Divider(color: Colors.white12),
               ListTile(
                 leading: const Icon(Icons.category_outlined, color: Colors.tealAccent),
                 title: const Text('Top 10 Category-wise', style: TextStyle(color: Colors.white)),
@@ -358,6 +365,82 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     );
   }
 
+  // --- 📸 NEW: TOP 30 EXPORT LOGIC ---
+  Future<void> _exportTop30Report() async {
+    showDialog(
+      context: context, barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const Dialog(
+          backgroundColor: Color(0xFF1E293B),
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.tealAccent),
+                SizedBox(width: 20),
+                Text("Generating Top 30 Report...", style: TextStyle(color: Colors.white)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      DateTime maxAbsoluteDate = DateTime(1970);
+      for (var f in widget.allFunds) {
+        final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
+        final t = f['ticker']?.toString() ?? '';
+        if (t == 'HBLTETF' || t == 'GOLD_24K') continue;
+        final isAbsoluteCat = ['Equity', 'Index Tracker', 'Exchange Traded Fund', 'Asset Allocation', 'Balanced'].contains(cat);
+        if (isAbsoluteCat && f['last_validity_date'] != null) {
+          final dt = DateTime.tryParse(f['last_validity_date'].toString());
+          if (dt != null) {
+            DateTime dOnly = DateTime(dt.year, dt.month, dt.day);
+            if (dOnly.isAfter(maxAbsoluteDate)) maxAbsoluteDate = dOnly;
+          }
+        }
+      }
+
+      var eligibleFunds = widget.allFunds.where((f) {
+        final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
+        final t = f['ticker']?.toString() ?? '';
+        
+        if (t == 'HBLTETF' || t == 'GOLD_24K') return false;
+        if (_excludedScreenshotFunds.contains(t)) return false;
+        if (!['Equity', 'Index Tracker', 'Exchange Traded Fund'].contains(cat)) return false;
+        if (f['return_1d'] == null) return false;
+
+        // Strict Delay Check
+        if (f['last_validity_date'] != null) {
+          final dt = DateTime.tryParse(f['last_validity_date'].toString());
+          if (dt != null) {
+            final dOnly = DateTime(dt.year, dt.month, dt.day);
+            if (dOnly.isBefore(maxAbsoluteDate)) return false; 
+          } else return false;
+        } else return false;
+
+        return true;
+      }).toList();
+
+      eligibleFunds.sort((a, b) => ((b['return_1d'] as num?)?.toDouble() ?? -999.0).compareTo((a['return_1d'] as num?)?.toDouble() ?? -999.0));
+      var top30 = eligibleFunds.take(30).toList();
+
+      await _captureAndSaveLight('Top 30 Market Leaders', top30, true);
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Top 30 Report saved to Gallery!'), backgroundColor: Colors.green, duration: Duration(seconds: 4)));
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
   // --- 📸 1. CATEGORY-WISE EXPORT LOGIC ---
   Future<void> _exportReports() async {
     showDialog(
@@ -385,6 +468,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
         var list = widget.allFunds.where((f) {
           final ticker = f['ticker']?.toString() ?? '';
           if (ticker == 'HBLTETF' || ticker == 'GOLD_24K') return false;
+          if (_excludedScreenshotFunds.contains(ticker)) return false;
 
           final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
           return categoryMatches.contains(cat);
@@ -396,7 +480,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
           final valB = (b[primarySortKey] as num?)?.toDouble() ?? -999.0;
           return valB.compareTo(valA);
         });
-
         return matureFunds.take(10).toList();
       }
 
@@ -408,262 +491,13 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
       final aaList = getTop10(['Asset Allocation'], 'return_1y');
       final balList = getTop10(['Balanced'], 'return_1y');
 
-      // --- PURE DATABASE DATE LOGIC (LAST WORKING DAY) ---
-      DateTime maxAbsoluteDate = DateTime(1970);
-      for (var f in widget.allFunds) {
-        final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
-        final t = f['ticker']?.toString() ?? '';
-        
-        if (t == 'HBLTETF' || t == 'GOLD_24K') continue;
-
-        final isAbsoluteCat = ['Equity', 'Index Tracker', 'Exchange Traded Fund', 'Asset Allocation', 'Balanced'].contains(cat);
-        
-        if (isAbsoluteCat && f['last_validity_date'] != null) {
-          final dt = DateTime.tryParse(f['last_validity_date'].toString());
-          if (dt != null) {
-            DateTime dOnly = DateTime(dt.year, dt.month, dt.day);
-            if (dOnly.isAfter(maxAbsoluteDate)) {
-              maxAbsoluteDate = dOnly;
-            }
-          }
-        }
-      }
-      
-      Future<void> captureAndSave(String title, List<Map<String, dynamic>> funds, bool isLongTerm) async {
-        if (funds.isEmpty) return;
-
-        double contentHeight = 120.0; 
-        contentHeight += 120.0; 
-        contentHeight += 40.0;  
-        contentHeight += 20.0;  
-        contentHeight += 40.0;  
-        contentHeight += 20.0;
-        
-        contentHeight += funds.length * 100.0; // Reduced row height for symmetry 
-        
-        if (title == 'Top Equity Funds') {
-          contentHeight += 40.0;
-          contentHeight += 220.0; 
-        }
-
-        double dynamicHeight = contentHeight + 100.0;
-
-        Widget reportCard = MediaQuery(
-          data: const MediaQueryData(textScaler: TextScaler.noScaling),
-          child: Directionality(
-            textDirection: TextDirection.ltr,
-            child: OverflowBox(
-              minWidth: 1080, maxWidth: 1080,
-              minHeight: dynamicHeight, maxHeight: dynamicHeight,
-              alignment: Alignment.topCenter,
-              child: Material(
-                color: const Color(0xFF0F172A),
-                child: Container(
-                  width: 1080, height: dynamicHeight,
-                  alignment: Alignment.topCenter,
-                  padding: const EdgeInsets.all(60.0), 
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min, 
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        height: 120,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            SizedBox(
-                              width: 600,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(title, style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 48, fontWeight: FontWeight.bold), maxLines: 1),
-                                  Text('Investment: PKR 1,00,000', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 24), maxLines: 1),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                              decoration: BoxDecoration(color: Colors.tealAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.tealAccent)),
-                              child: Text('Bachat Vault', style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 28, fontWeight: FontWeight.w800)),
-                            )
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 40),
-                      const Divider(color: Colors.white24, thickness: 2, height: 20),
-                      
-                      SizedBox(
-                        height: 40,
-                        child: Row(
-                          children: [
-                            SizedBox(width: 500, child: Text('Fund Name', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold))),
-                            SizedBox(width: 230, child: Text('1D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold))),
-                            SizedBox(width: 230, child: Text(isLongTerm ? '1Y Return' : '30D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold))),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      ...funds.map((f) {
-                        final name = f['short_name'] ?? f['fund_name']?.toString() ?? 'Unknown';
-                        final amc = f['short_amc_name'] ?? f['amc_name']?.toString() ?? '';
-                        final isShariah = (f['is_shariah'] == 1 || f['is_shariah'] == '1' || f['is_shariah'] == true);
-                        final displayName = '$name${isShariah ? " 🕌" : ""}';
-                        final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
-                        final logic = f['return_logic']?.toString().trim() ?? '';
-                        
-                        // --- THE PERFECT DELAY LOGIC ---
-                        bool isStale = false;
-                        if (f['last_validity_date'] != null) {
-                          final dt = DateTime.tryParse(f['last_validity_date'].toString());
-                          if (dt != null) {
-                            final dOnly = DateTime(dt.year, dt.month, dt.day);
-                            if (cat == 'Commodities') {
-                              if (dOnly.isBefore(maxAbsoluteDate.subtract(const Duration(days: 1)))) {
-                                isStale = true;
-                              }
-                            } else if (cat == 'Money Market' || cat == 'Income' || logic == 'Annualized') {
-                              if (dOnly.isBefore(maxAbsoluteDate)) {
-                                isStale = true;
-                              }
-                            } else {
-                              if (dOnly.isBefore(maxAbsoluteDate)) {
-                                isStale = true;
-                              }
-                            }
-                          } else {
-                            isStale = true;
-                          }
-                        } else {
-                          isStale = true;
-                        }
-                        
-                        String validityDateStr = f['last_validity_date'] != null 
-                            ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(f['last_validity_date'].toString()) ?? DateTime.now()) 
-                            : 'N/A';
-                        if (isStale) validityDateStr += ' (Delayed)';
-                        Color validityColor = isStale ? Colors.redAccent.shade100 : Colors.white54;
-
-                        final r1d = f['return_1d'];
-                        final key2 = isLongTerm ? 'return_1y' : 'return_30d';
-                        final r2 = f[key2];
-
-                        String formatPkr(dynamic r) {
-                          if (r == null) return 'N/A';
-                          double val = (r as num).toDouble();
-                          double pkr = 100000.0 * (val - 1.0);
-                          final format = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
-                          return '${pkr > 0 ? '+' : pkr < 0 ? '-' : ''}${format.format(pkr.abs())}';
-                        }
-                        
-                        Color getColor(dynamic r) {
-                          if (r == null) return Colors.white54;
-                          double val = (r as num).toDouble();
-                          return val >= 1.0 ? Colors.greenAccent : Colors.redAccent;
-                        }
-
-                        return SizedBox(
-                          height: 100, // Compact height
-                          child: Container(
-                            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white12))),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                SizedBox(
-                                  width: 500, 
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(right: 16.0),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(amc.toUpperCase(), style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(displayName, style: GoogleFonts.poppins(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600))),
-                                        Text('Validity: $validityDateStr', style: GoogleFonts.poppins(color: validityColor, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                      ],
-                                    ),
-                                  )
-                                ),
-                                SizedBox(
-                                  width: 230, 
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      FittedBox(fit: BoxFit.scaleDown, child: Text(formatPkr(r1d), style: GoogleFonts.poppins(color: getColor(r1d), fontSize: 24, fontWeight: FontWeight.bold))),
-                                    ]
-                                  )
-                                ),
-                                SizedBox(
-                                  width: 230, 
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      FittedBox(fit: BoxFit.scaleDown, child: Text(formatPkr(r2), style: GoogleFonts.poppins(color: getColor(r2), fontSize: 24, fontWeight: FontWeight.bold))),
-                                    ]
-                                  )
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
-                      
-                      if (title == 'Top Equity Funds') ...[
-                        const SizedBox(height: 40),
-                        SizedBox(
-                          height: 220, 
-                          child: Container(
-                            padding: const EdgeInsets.all(32),
-                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(16)),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Market Benchmarks', style: GoogleFonts.poppins(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 24),
-                                Expanded(
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      _buildBenchmarkStat('KSE-100 (1D)', widget.benchmarkStats['KSE100']?['return_1d']),
-                                      _buildBenchmarkStat('KSE-100 (1Y)', widget.benchmarkStats['KSE100']?['return_1y']),
-                                      _buildBenchmarkStat('KMI-30 (1D)', widget.benchmarkStats['KMI30']?['return_1d']),
-                                      _buildBenchmarkStat('KMI-30 (1Y)', widget.benchmarkStats['KMI30']?['return_1y']),
-                                    ],
-                                  ),
-                                )
-                               ],
-                            ),
-                          ),
-                        )
-                       ]
-                    ],
-                  ),
-                ),
-              ),
-            ),
-           ),
-        );
-
-        Uint8List capturedImage = await _screenshotController.captureFromWidget(
-          reportCard, 
-          delay: const Duration(milliseconds: 100),
-          targetSize: Size(1080, dynamicHeight),
-          pixelRatio: 1.0, 
-        );
-
-        await Gal.putImageBytes(capturedImage, name: 'BachatVault_${title.replaceAll(' ', '')}_Report');
-      }
-
-      await captureAndSave('Top Money Market Funds', mmList, false);
-      await captureAndSave('Top Income Funds', incList, false);
-      await captureAndSave('Top Equity Funds', eqList, true);
-      await captureAndSave('Top Asset Allocation Funds', aaList, true);
-      await captureAndSave('Top Balanced Funds', balList, true);
-      await captureAndSave('Top Commodity Funds', commList, true);
-      await captureAndSave('Top ETFs', etfList, true);
+      await _captureAndSaveLight('Top Money Market Funds', mmList, false);
+      await _captureAndSaveLight('Top Income Funds', incList, false);
+      await _captureAndSaveLight('Top Equity Funds', eqList, true);
+      await _captureAndSaveLight('Top Asset Allocation Funds', aaList, true);
+      await _captureAndSaveLight('Top Balanced Funds', balList, true);
+      await _captureAndSaveLight('Top Commodity Funds', commList, true);
+      await _captureAndSaveLight('Top ETFs', etfList, true);
 
       if (mounted) {
         Navigator.of(context).pop();
@@ -678,7 +512,260 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
     }
   }
 
-  // --- 📸 2. AMC-WISE EXPORT LOGIC (OPTIMIZED HEIGHT) ---
+  // --- THE SHARED LIGHT THEME CAPTURE LOGIC ---
+  Future<void> _captureAndSaveLight(String title, List<Map<String, dynamic>> funds, bool isLongTerm) async {
+    if (funds.isEmpty) return;
+
+    DateTime maxAbsoluteDate = DateTime(1970);
+    for (var f in widget.allFunds) {
+      final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
+      final t = f['ticker']?.toString() ?? '';
+      if (t == 'HBLTETF' || t == 'GOLD_24K') continue;
+      final isAbsoluteCat = ['Equity', 'Index Tracker', 'Exchange Traded Fund', 'Asset Allocation', 'Balanced'].contains(cat);
+      if (isAbsoluteCat && f['last_validity_date'] != null) {
+        final dt = DateTime.tryParse(f['last_validity_date'].toString());
+        if (dt != null) {
+          DateTime dOnly = DateTime(dt.year, dt.month, dt.day);
+          if (dOnly.isAfter(maxAbsoluteDate)) maxAbsoluteDate = dOnly;
+        }
+      }
+    }
+
+    // Compress row height for Top 30 to save massive vertical space
+    double rowHeight = title == 'Top 30 Market Leaders' ? 75.0 : 100.0;
+    double contentHeight = 120.0 + 120.0 + 40.0 + 20.0 + 40.0 + 20.0;
+    contentHeight += funds.length * rowHeight; 
+    
+    if (title == 'Top Equity Funds' || title == 'Top 30 Market Leaders') {
+      contentHeight += 40.0 + 220.0; 
+    }
+
+    double dynamicHeight = contentHeight + 100.0;
+
+    Widget reportCard = MediaQuery(
+      data: const MediaQueryData(textScaler: TextScaler.noScaling),
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: OverflowBox(
+          minWidth: 1080, maxWidth: 1080,
+          minHeight: dynamicHeight, maxHeight: dynamicHeight,
+          alignment: Alignment.topCenter,
+          child: Material(
+            color: Colors.white, 
+            child: Container(
+              width: 1080, height: dynamicHeight,
+              alignment: Alignment.topCenter,
+              padding: const EdgeInsets.all(60.0), 
+              child: Column(
+                mainAxisSize: MainAxisSize.min, 
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                        height: title == 'Top 30 Market Leaders' ? 140 : 120, // Expanded to fit 3 lines
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            SizedBox(
+                              width: 600,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(title, style: GoogleFonts.poppins(color: Colors.teal.shade800, fontSize: 48, fontWeight: FontWeight.bold), maxLines: 1),
+                                  Text('Investment: PKR 1,00,000', style: GoogleFonts.poppins(color: Colors.black87, fontSize: 24), maxLines: 1),
+                                  if (title == 'Top 30 Market Leaders')
+                                    Text('As of ${DateFormat('dd MMM yyyy').format(maxAbsoluteDate)}', style: GoogleFonts.poppins(color: Colors.black54, fontSize: 20), maxLines: 1),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.teal.shade800)),
+                              child: Text('Bachat Vault', style: GoogleFonts.poppins(color: Colors.teal.shade800, fontSize: 28, fontWeight: FontWeight.w800)),
+                            )
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: title == 'Top 30 Market Leaders' ? 16 : 40), // Reduced gap for Top 30
+                      const Divider(color: Colors.black12, thickness: 2, height: 20),
+                  
+                  SizedBox(
+                    height: 40,
+                    child: Row(
+                      children: [
+                        SizedBox(width: 500, child: Text('Fund Name', style: GoogleFonts.poppins(color: Colors.black54, fontSize: 24, fontWeight: FontWeight.bold))),
+                        SizedBox(width: 230, child: Text('1D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.black54, fontSize: 24, fontWeight: FontWeight.bold))),
+                        SizedBox(width: 230, child: Text(isLongTerm ? '1Y Return' : '30D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.black54, fontSize: 24, fontWeight: FontWeight.bold))),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  ...funds.map((f) {
+                    final name = f['short_name'] ?? f['fund_name']?.toString() ?? 'Unknown';
+                    final amc = f['short_amc_name'] ?? f['amc_name']?.toString() ?? '';
+                    final isShariah = (f['is_shariah'] == 1 || f['is_shariah'] == '1' || f['is_shariah'] == true);
+                    final displayName = '$name${isShariah ? " 🕌" : ""}';
+                    final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
+                    final logic = f['return_logic']?.toString().trim() ?? '';
+                    
+                    bool isStale = false;
+                    if (f['last_validity_date'] != null) {
+                      final dt = DateTime.tryParse(f['last_validity_date'].toString());
+                      if (dt != null) {
+                        final dOnly = DateTime(dt.year, dt.month, dt.day);
+                        if (cat == 'Commodities') {
+                          if (dOnly.isBefore(maxAbsoluteDate.subtract(const Duration(days: 1)))) isStale = true;
+                        } else if (cat == 'Money Market' || cat == 'Income' || logic == 'Annualized') {
+                          if (dOnly.isBefore(maxAbsoluteDate)) isStale = true;
+                        } else {
+                          if (dOnly.isBefore(maxAbsoluteDate)) isStale = true;
+                        }
+                      } else isStale = true;
+                    } else isStale = true;
+                    
+                    String validityDateStr = f['last_validity_date'] != null ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(f['last_validity_date'].toString()) ?? DateTime.now()) : 'N/A';
+                    if (isStale) validityDateStr += ' (Delayed)';
+                    Color validityColor = isStale ? Colors.red.shade700 : Colors.black54;
+
+                    final r1d = f['return_1d'];
+                    final key2 = isLongTerm ? 'return_1y' : 'return_30d';
+                    final r2 = f[key2];
+
+                    String formatPkr(dynamic r) {
+                      if (r == null) return 'N/A';
+                      double val = (r as num).toDouble();
+                      double pkr = 100000.0 * (val - 1.0);
+                      final format = NumberFormat.currency(locale: 'en_IN', symbol: '', decimalDigits: 0);
+                      return '${pkr > 0 ? '+' : pkr < 0 ? '-' : ''}${format.format(pkr.abs())}';
+                    }
+                    
+                    Color getColor(dynamic r) {
+                      if (r == null) return Colors.black54;
+                      double val = (r as num).toDouble();
+                      return val >= 1.0 ? Colors.green.shade700 : Colors.red.shade700;
+                    }
+
+                    return SizedBox(
+                      height: rowHeight, // Use dynamic height
+                      child: Container(
+                        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.black12))),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 500, 
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 16.0),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (title != 'Top 30 Market Leaders')
+                                      Row(
+                                        children: [
+                                          Flexible(child: Text(amc.toUpperCase(), style: GoogleFonts.poppins(color: Colors.teal.shade800, fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                          const SizedBox(width: 12),
+                                          Text('•', style: GoogleFonts.poppins(color: Colors.black26, fontSize: 16)),
+                                          const SizedBox(width: 12),
+                                          Text(validityDateStr, style: GoogleFonts.poppins(color: validityColor, fontSize: 14, fontWeight: FontWeight.w600)),
+                                        ],
+                                      )
+                                    else
+                                      Text(amc.toUpperCase(), style: GoogleFonts.poppins(color: Colors.teal.shade800, fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    
+                                    FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(displayName, style: GoogleFonts.poppins(color: Colors.black87, fontSize: 26, fontWeight: FontWeight.w600))),
+                                  ],
+                                ),
+                              )
+                            ),
+                            SizedBox(
+                              width: 230, 
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  FittedBox(fit: BoxFit.scaleDown, child: Text(formatPkr(r1d), style: GoogleFonts.poppins(color: getColor(r1d), fontSize: 24, fontWeight: FontWeight.bold))),
+                                ]
+                              )
+                            ),
+                            SizedBox(
+                              width: 230, 
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  FittedBox(fit: BoxFit.scaleDown, child: Text(formatPkr(r2), style: GoogleFonts.poppins(color: getColor(r2), fontSize: 24, fontWeight: FontWeight.bold))),
+                                ]
+                              )
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                  
+                  if (title == 'Top Equity Funds' || title == 'Top 30 Market Leaders') ...[
+                    const SizedBox(height: 40),
+                    SizedBox(
+                      height: 220, 
+                      child: Container(
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.black12)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Market Benchmarks', style: GoogleFonts.poppins(color: Colors.black87, fontSize: 28, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 24),
+                            Expanded(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  _buildBenchmarkStatLight('KSE-100 (1D)', widget.benchmarkStats['KSE100']?['return_1d']),
+                                  _buildBenchmarkStatLight('KSE-100 (1Y)', widget.benchmarkStats['KSE100']?['return_1y']),
+                                  _buildBenchmarkStatLight('KMI-30 (1D)', widget.benchmarkStats['KMI30']?['return_1d']),
+                                  _buildBenchmarkStatLight('KMI-30 (1Y)', widget.benchmarkStats['KMI30']?['return_1y']),
+                                ],
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                    )
+                  ]
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Uint8List capturedImage = await _screenshotController.captureFromWidget(
+      reportCard, 
+      delay: const Duration(milliseconds: 100),
+      targetSize: Size(1080, dynamicHeight),
+      pixelRatio: 1.0, 
+    );
+    await Gal.putImageBytes(capturedImage, name: 'BachatVault_${title.replaceAll(' ', '')}_Report');
+  }
+
+  Widget _buildBenchmarkStatLight(String label, dynamic returnFactor) {
+    if (returnFactor == null) return const SizedBox.shrink();
+    double r = (returnFactor as num).toDouble();
+    double pct = (r - 1.0) * 100.0;
+    Color c = pct >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+    String sign = pct > 0 ? '+' : '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: GoogleFonts.poppins(color: Colors.black54, fontSize: 20)),
+        FittedBox(fit: BoxFit.scaleDown, child: Text('$sign${pct.toStringAsFixed(2)}%', style: GoogleFonts.poppins(color: c, fontSize: 32, fontWeight: FontWeight.bold))),
+      ],
+    );
+  }
+
+  // --- 📸 2. AMC-WISE EXPORT LOGIC (LIGHT THEME OPTIMIZED) ---
   Future<void> _exportAmcReports(List<String> selectedAmcs) async {
     showDialog(
       context: context, barrierDismissible: false,
@@ -702,7 +789,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 
     try {
       int imagesSaved = 0;
-
       int getCatPriority(String cat) {
         switch(cat) {
           case 'Money Market': return 1;
@@ -717,23 +803,18 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
         }
       }
 
-      // --- PURE DATABASE DATE LOGIC (LAST WORKING DAY) ---
       DateTime maxAbsoluteDate = DateTime(1970);
       for (var f in widget.allFunds) {
         final cat = (f['short_category'] ?? f['category'])?.toString().trim() ?? '';
         final t = f['ticker']?.toString() ?? '';
         
         if (t == 'HBLTETF' || t == 'GOLD_24K') continue;
-
         final isAbsoluteCat = ['Equity', 'Index Tracker', 'Exchange Traded Fund', 'Asset Allocation', 'Balanced'].contains(cat);
-        
         if (isAbsoluteCat && f['last_validity_date'] != null) {
           final dt = DateTime.tryParse(f['last_validity_date'].toString());
           if (dt != null) {
             DateTime dOnly = DateTime(dt.year, dt.month, dt.day);
-            if (dOnly.isAfter(maxAbsoluteDate)) {
-              maxAbsoluteDate = dOnly;
-            }
+            if (dOnly.isAfter(maxAbsoluteDate)) maxAbsoluteDate = dOnly;
           }
         }
       }
@@ -746,26 +827,20 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
           final sn = f['short_name']?.toString() ?? '';
 
           if (t == 'HBLTETF' || t == 'GOLD_24K') return false;
+          if (_excludedScreenshotFunds.contains(t)) return false;
 
-          // 🚨 EXCLUDED FUNDS LOGIC
           final excludeNames = [
-            'Meezan Daily Income Fund (Meezan Mahana Munafa Plan)',
-            'Meezan Daily Income Fund (MDIP I)',
-            'Meezan Rozana Amdani Fund',
-            'Alhamra Daily Dividend Fund',
-            'NBP Cash Plan II',
-            'Pak Qatar Daily Dividend Plan',
-            'Meezan Mahana Munafa Plan',
-            'Meezan Munafa Plan I'
+            'Meezan Daily Income Fund (Meezan Mahana Munafa Plan)', 'Meezan Daily Income Fund (MDIP I)',
+            'Meezan Rozana Amdani Fund', 'Alhamra Daily Dividend Fund', 'NBP Cash Plan II',
+            'Pak Qatar Daily Dividend Plan', 'Meezan Mahana Munafa Plan', 'Meezan Munafa Plan I'
           ];
 
           if (excludeNames.contains(n) || excludeNames.contains(sn)) return false;
-          // Deep substring catch
           if (n.contains('Meezan Rozana Amdani') || n.contains('NBP Cash Plan II') || n.contains('Pak Qatar Daily Dividend') || n.contains('Alhamra Daily Dividend')) return false;
 
           return a == amc;
         }).toList();
-        
+
         if (amcFunds.isEmpty) continue;
 
         var groupA = amcFunds.where((f) {
@@ -782,11 +857,8 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
 
         if (groupA.isEmpty && groupB.isEmpty) continue;
 
-        // REDUCED ROW HEIGHT (140 -> 100)
         double contentHeight = 120.0 + 120.0 + 40.0 + 20.0;
-        if (groupA.isNotEmpty) {
-          contentHeight += 80.0 + (groupA.length * 100.0);
-        }
+        if (groupA.isNotEmpty) contentHeight += 80.0 + (groupA.length * 100.0);
         if (groupB.isNotEmpty) {
           if (groupA.isNotEmpty) contentHeight += 40.0;
           contentHeight += 80.0 + (groupB.length * 100.0);
@@ -800,36 +872,24 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
           final isShariah = (f['is_shariah'] == 1 || f['is_shariah'] == '1' || f['is_shariah'] == true);
           final displayName = '$name${isShariah ? " 🕌" : ""}';
           
-          // --- THE PERFECT DELAY LOGIC ---
           bool isStale = false;
           if (f['last_validity_date'] != null) {
             final dt = DateTime.tryParse(f['last_validity_date'].toString());
             if (dt != null) {
               final dOnly = DateTime(dt.year, dt.month, dt.day);
               if (cat == 'Commodities') {
-                if (dOnly.isBefore(maxAbsoluteDate.subtract(const Duration(days: 1)))) {
-                  isStale = true;
-                }
+                if (dOnly.isBefore(maxAbsoluteDate.subtract(const Duration(days: 1)))) isStale = true;
               } else if (cat == 'Money Market' || cat == 'Income' || logic == 'Annualized') {
-                if (dOnly.isBefore(maxAbsoluteDate)) {
-                  isStale = true;
-                }
+                if (dOnly.isBefore(maxAbsoluteDate)) isStale = true;
               } else {
-                if (dOnly.isBefore(maxAbsoluteDate)) {
-                  isStale = true;
-                }
+                if (dOnly.isBefore(maxAbsoluteDate)) isStale = true;
               }
-            } else {
-               isStale = true;
-            }
-          } else {
-             isStale = true;
-          }
+            } else isStale = true;
+          } else isStale = true;
           
-          String validityDateStr = f['last_validity_date'] != null 
-              ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(f['last_validity_date'].toString()) ?? DateTime.now()) : 'N/A';
+          String validityDateStr = f['last_validity_date'] != null ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(f['last_validity_date'].toString()) ?? DateTime.now()) : 'N/A';
           if (isStale) validityDateStr += ' (Delayed)';
-          Color validityColor = isStale ? Colors.redAccent.shade100 : Colors.white54;
+          Color validityColor = isStale ? Colors.red.shade700 : Colors.black54;
 
           final r1d = f['return_1d'];
           final r2 = f[isLongTerm ? 'return_1y' : 'return_30d'];
@@ -843,16 +903,15 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
           }
 
           Color getColor(dynamic r) {
-            if (r == null) return Colors.white54;
+            if (r == null) return Colors.black54;
             double val = (r as num).toDouble();
-            return val >= 1.0 ? Colors.greenAccent : Colors.redAccent;
+            return val >= 1.0 ? Colors.green.shade700 : Colors.red.shade700;
           }
 
-          // COMPACT 100px HEIGHT
           return SizedBox(
             height: 100, 
             child: Container(
-              decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white12))),
+              decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.black12))),
               child: Row(
                 children: [
                   SizedBox(
@@ -865,14 +924,14 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                         children: [
                           Row(
                             children: [
-                              Text(cat.toUpperCase(), style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+                              Text(cat.toUpperCase(), style: GoogleFonts.poppins(color: Colors.teal.shade800, fontSize: 16, fontWeight: FontWeight.bold)),
                               const SizedBox(width: 12),
-                              Text('•', style: GoogleFonts.poppins(color: Colors.white24, fontSize: 16)),
+                              Text('•', style: GoogleFonts.poppins(color: Colors.black26, fontSize: 16)),
                               const SizedBox(width: 12),
                               Text(validityDateStr, style: GoogleFonts.poppins(color: validityColor, fontSize: 14, fontWeight: FontWeight.w600)),
                             ],
                           ),
-                          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(displayName, style: GoogleFonts.poppins(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600))),
+                          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(displayName, style: GoogleFonts.poppins(color: Colors.black87, fontSize: 26, fontWeight: FontWeight.w600))),
                         ],
                       ),
                     )
@@ -884,7 +943,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         FittedBox(fit: BoxFit.scaleDown, child: Text(formatPkr(r1d), style: GoogleFonts.poppins(color: getColor(r1d), fontSize: 24, fontWeight: FontWeight.bold))),
-                        // Percentages REMOVED to save height space
                       ]
                     )
                   ),
@@ -895,7 +953,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         FittedBox(fit: BoxFit.scaleDown, child: Text(formatPkr(r2), style: GoogleFonts.poppins(color: getColor(r2), fontSize: 24, fontWeight: FontWeight.bold))),
-                        // Percentages REMOVED to save height space
                       ]
                     )
                   ),
@@ -914,7 +971,7 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
               minHeight: dynamicHeight, maxHeight: dynamicHeight,
               alignment: Alignment.topCenter,
               child: Material(
-                color: const Color(0xFF0F172A),
+                color: Colors.white, 
                 child: Container(
                   width: 1080, height: dynamicHeight,
                   alignment: Alignment.topCenter,
@@ -934,22 +991,21 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  // FITTED BOX to prevent AMC name cutting
-                                  FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(amc, style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 48, fontWeight: FontWeight.bold))),
-                                  Text('Investment: PKR 1,00,000', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 24), maxLines: 1),
+                                  FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(amc, style: GoogleFonts.poppins(color: Colors.teal.shade800, fontSize: 48, fontWeight: FontWeight.bold))),
+                                  Text('Investment: PKR 1,00,000', style: GoogleFonts.poppins(color: Colors.black87, fontSize: 24), maxLines: 1),
                                 ],
                               ),
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                              decoration: BoxDecoration(color: Colors.tealAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.tealAccent)),
-                              child: Text('Bachat Vault', style: GoogleFonts.poppins(color: Colors.tealAccent, fontSize: 28, fontWeight: FontWeight.w800)),
+                              decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.teal.shade800)),
+                              child: Text('Bachat Vault', style: GoogleFonts.poppins(color: Colors.teal.shade800, fontSize: 28, fontWeight: FontWeight.w800)),
                             )
                           ],
                         ),
                       ),
                       const SizedBox(height: 40),
-                      const Divider(color: Colors.white24, thickness: 2, height: 20),
+                      const Divider(color: Colors.black12, thickness: 2, height: 20),
                       
                       if (groupA.isNotEmpty) ...[
                         SizedBox(
@@ -957,9 +1013,9 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              SizedBox(width: 500, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('Money Market & Income', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
-                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('1D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
-                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('30D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                              SizedBox(width: 500, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('Money Market & Income', style: GoogleFonts.poppins(color: Colors.black54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('1D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.black54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('30D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.black54, fontSize: 24, fontWeight: FontWeight.bold)))),
                             ],
                           ),
                         ),
@@ -974,9 +1030,9 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              SizedBox(width: 500, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('Equity, Balanced & ETFs', style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
-                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('1D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
-                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('1Y Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                              SizedBox(width: 500, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('Equity, Balanced & ETFs', style: GoogleFonts.poppins(color: Colors.black54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('1D Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.black54, fontSize: 24, fontWeight: FontWeight.bold)))),
+                              SizedBox(width: 230, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: Text('1Y Return', textAlign: TextAlign.right, style: GoogleFonts.poppins(color: Colors.black54, fontSize: 24, fontWeight: FontWeight.bold)))),
                             ],
                           ),
                         ),
@@ -996,7 +1052,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
           targetSize: Size(1080, dynamicHeight),
           pixelRatio: 1.0, 
         );
-
         await Gal.putImageBytes(capturedImage, name: 'BachatVault_AMC_${amc.replaceAll(' ', '')}');
         imagesSaved++;
       }
@@ -1012,21 +1067,6 @@ class _FullPerformanceScreenState extends State<FullPerformanceScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
       }
     }
-  }
-
-  Widget _buildBenchmarkStat(String label, dynamic returnFactor) {
-    if (returnFactor == null) return const SizedBox.shrink();
-    double r = (returnFactor as num).toDouble();
-    double pct = (r - 1.0) * 100.0;
-    Color c = pct >= 0 ? Colors.greenAccent : Colors.redAccent;
-    String sign = pct > 0 ? '+' : '';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 20)),
-        FittedBox(fit: BoxFit.scaleDown, child: Text('$sign${pct.toStringAsFixed(2)}%', style: GoogleFonts.poppins(color: c, fontSize: 32, fontWeight: FontWeight.bold))),
-      ],
-    );
   }
 
   // --- CUSTOM DATE RANGE ENGINE ---

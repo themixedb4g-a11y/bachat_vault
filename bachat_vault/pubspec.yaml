@@ -43,10 +43,12 @@ flutter:
 
 # --- APP ICON CONFIGURATION ---
 flutter_launcher_icons:
-  android: true
+  android: "launcher_icon"
   ios: true
   image_path: "assets/app_icon_adaptive.png"
-  min_sdk_android: 21
+  min_sdk_android: 21 # Required for adaptive icons
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/app_icon_adaptive.png"
 
 # --- SPLASH SCREEN CONFIGURATION ---
 flutter_native_splash:

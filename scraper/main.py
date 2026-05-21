@@ -1091,9 +1091,10 @@ def sync_mufap_payouts():
         print(f"   ❌ Payouts Error: {e}")
 
 
-# --- TASK G: MUFAP TER ---
+# --- TASK G: MUFAP TER (UPDATED WITH MANUAL OVERRIDE SAFEGUARD) ---
 def sync_mufap_ter():
     print("📊 Syncing MUFAP TER...")
+    
     target_ids = {
         str(int(float(row["fund_id_mufap"])))
         for row in master_res.data
@@ -1104,6 +1105,18 @@ def sync_mufap_ter():
         for row in master_res.data
         if row.get("fund_id_mufap")
     }
+
+    # 🚨 NEW: Fetch manual TER flags from performance_stats to create a "Do Not Touch" list
+    try:
+        perf_res = supabase.table("performance_stats").select("ticker, is_manual_ter").execute()
+        manual_ter_tickers = {
+            row["ticker"]
+            for row in perf_res.data
+            if row.get("is_manual_ter") is True
+        }
+    except Exception as e:
+        print(f"   ⚠️ Could not fetch manual TER flags: {e}")
+        manual_ter_tickers = set()
 
     batch = []
     try:
@@ -1119,10 +1132,18 @@ def sync_mufap_ter():
             cells = row.find_all("td")
             if len(cells) < 10:
                 continue
+            
             link = cells[2].find("a", href=True)
             if link and "FundID=" in link["href"]:
                 m_id = re.search(r"FundID=(\d+)", link["href"]).group(1)
+                
                 if m_id in target_ids:
+                    ticker = id_to_ticker[m_id]
+
+                    # 🚨 NEW: Skip this fund entirely if you have manually entered its TER
+                    if ticker in manual_ter_tickers:
+                        continue
+
                     try:
                         ter_mtd_str = (
                             cells[8].text.replace("%", "").replace(",", "").strip()
@@ -1130,6 +1151,7 @@ def sync_mufap_ter():
                         ter_ytd_str = (
                             cells[9].text.replace("%", "").replace(",", "").strip()
                         )
+                        
                         ter_mtd = (
                             float(ter_mtd_str)
                             if ter_mtd_str and ter_mtd_str != "-"
@@ -1140,9 +1162,10 @@ def sync_mufap_ter():
                             if ter_ytd_str and ter_ytd_str != "-"
                             else 0.0
                         )
+                        
                         batch.append(
                             {
-                                "ticker": id_to_ticker[m_id],
+                                "ticker": ticker,
                                 "ter_mtd": ter_mtd,
                                 "ter_ytd": ter_ytd,
                             }
@@ -1154,7 +1177,8 @@ def sync_mufap_ter():
             supabase.table("performance_stats").upsert(
                 batch, on_conflict="ticker"
             ).execute()
-            print(f"   ✅ {len(batch)} TER stats synced.")
+            print(f"   ✅ {len(batch)} TER stats synced (Protected {len(manual_ter_tickers)} manual entries).")
+            
     except Exception as e:
         print(f"   ❌ TER Error: {e}")
 

@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; 
 import 'package:bachat_vault/screens/index_investing_screen.dart';
 import 'package:bachat_vault/screens/risk_profiler_screen.dart';
+import 'package:bachat_vault/screens/dashboard.dart'; // To access AppData
+import 'package:bachat_vault/screens/manager_scorecard_screen.dart';
 
 // ============================================================================
 // 1. THE NEW "TOOLS" MAIN MENU
@@ -33,12 +35,24 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
   }) {
     return InkWell(
       onTap: () {
+        // --- ADD THIS SAFETY CHECK ---
+        if (AppData.allFunds.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Market data is still loading, please wait...'),
+              backgroundColor: Colors.teal,
+            ),
+          );
+          return;
+        }
+        // --- NAVIGATION ---
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => destinationScreen),
         );
       },
       borderRadius: BorderRadius.circular(20),
+
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
@@ -150,13 +164,32 @@ class _CalculatorsScreenState extends State<CalculatorsScreen>
 
                   const SizedBox(height: 16),
                   
-                  _buildToolCard(
+                    _buildToolCard(
                     context: context,
                     title: '🧠 Smart Risk Profiler',
                     subtitle: 'Take a quick quiz to discover your investor profile and ideal asset allocation.',
                     icon: Icons.psychology_rounded,
                     accentColor: Colors.purpleAccent,
-                    destinationScreen: const RiskProfilerScreen(),
+                    // Pass the RiskProfilerScreen with the data from the Global Vault
+                    destinationScreen: Builder(builder: (context) {
+                      return RiskProfilerScreen(
+                        allFunds: AppData.allFunds,
+                        benchmarkStats: AppData.benchmarkStats,
+                      );
+                    }),
+                  ),
+
+                  const SizedBox(height: 16),
+                  
+                    _buildToolCard(
+                    context: context,
+                    title: '🏆 Manager Scorecard',
+                    subtitle: 'Rankings of Pakistan\'s top mutual fund managers based on performance and risk.',
+                    icon: Icons.leaderboard_rounded,
+                    accentColor: Colors.amberAccent,
+                    destinationScreen: Builder(builder: (context) {
+                      return const ManagerScorecardScreen();
+                    }),
                   ),
                 ],
               ),

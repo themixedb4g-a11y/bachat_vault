@@ -288,6 +288,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         _allFunds = combined;
         _isLoading = false;
       });
+      // 🚨 NEW: Save to global memory for the Tools tab to use!
+      AppData.allFunds = combined;
+      AppData.benchmarkStats = _benchmarkStats;
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -1258,4 +1261,10 @@ class IndianNumberFormatter extends TextInputFormatter {
       selection: TextSelection.collapsed(offset: finalString.length),
     );
   }
+}
+
+// --- SHARED GLOBAL DATA VAULT ---
+class AppData {
+  static List<Map<String, dynamic>> allFunds = [];
+  static Map<String, dynamic> benchmarkStats = {};
 }
